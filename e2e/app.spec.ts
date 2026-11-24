@@ -192,7 +192,7 @@ test.describe('Notion import and the plan', () => {
     await page.getByTestId('program-item').first().click();
     await page.getByTestId('program-menu').click();
     await page.getByRole('menuitem', { name: 'Duplicate' }).click();
-    await expect(page.getByText('Draft')).toBeVisible();
+    await expect(page.getByText('Draft', { exact: true })).toBeVisible();
   });
 });
 
