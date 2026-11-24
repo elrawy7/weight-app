@@ -4,9 +4,11 @@ import { useMediaQuery } from '@mantine/hooks';
 import { IconCalendarEvent, IconHistory, IconBooks, IconChartLine, IconDots } from '@tabler/icons-react';
 import { t, type MsgKey } from '../i18n';
 import { UpdatePrompt } from '../components/banners';
+import { RestTimerHost } from '../features/workout/RestTimer';
+import { ResumeGate } from '../features/workout/ResumeGate';
 
 const TABS: { to: string; key: MsgKey; icon: typeof IconBooks; match: RegExp }[] = [
-  { to: '/', key: 'nav.today', icon: IconCalendarEvent, match: /^\/(plan)?$/ },
+  { to: '/', key: 'nav.today', icon: IconCalendarEvent, match: /^\/(plan|workout\/.*)?$/ },
   { to: '/history', key: 'nav.history', icon: IconHistory, match: /^\/history/ },
   { to: '/library', key: 'nav.library', icon: IconBooks, match: /^\/library/ },
   { to: '/progress', key: 'nav.progress', icon: IconChartLine, match: /^\/progress/ },
@@ -32,6 +34,8 @@ export function Shell({ children }: { children: ReactNode }) {
       {nav}
       <main className="w-main">
         <UpdatePrompt />
+        <RestTimerHost />
+        <ResumeGate />
         {children}
       </main>
     </>

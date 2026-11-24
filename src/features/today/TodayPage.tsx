@@ -3,17 +3,19 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActionIcon, Alert, Badge, Button, Card, Checkbox, Group, Stack, Text, Title, UnstyledButton } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconBarbell, IconMoon, IconAlertCircle, IconFileImport, IconPlus, IconChevronLeft, IconChevronRight, IconCircleCheckFilled, IconCalendarMonth, IconCheck } from '@tabler/icons-react';
+import { IconBarbell, IconMoon, IconAlertCircle, IconFileImport, IconPlus, IconChevronLeft, IconChevronRight, IconCircleCheckFilled, IconCalendarMonth, IconCheck, IconPlayerPlay, IconListDetails } from '@tabler/icons-react';
 import { useDb } from '../../app/db';
 import { t } from '../../i18n';
 import { addDays, deviceTimeZone, formatDate, isValidIsoDate, localDateOf } from '../../domain/dates';
-import { phaseOf, planForDate, setsForWeek, type DayPlan } from '../../domain/schedule';
+import { phaseOf, planForDate, setsForWeek, weekOf, type DayPlan } from '../../domain/schedule';
 import { ConfirmSheet, EmptyState, ExerciseCard, KneeBadge, Section } from '../../components/ui';
 import { QuickLogSheet } from './QuickLogSheet';
 import { markDone, undoQuickLog, updateQuickLog } from './quickLog';
 import { BackupIndicator, InstallBanner } from '../../components/banners';
 import type { Exercise, WorkoutTemplate } from '../../db/types';
 import * as R from '../../db/repos';
+import { activeSession, estimateMinutes, quickToFull, startWorkout } from '../workout/workoutOps';
+import { StartSheet } from '../workout/StartSheet';
 
 /** The real local date (profile time zone) and the day being viewed (`?date=` lets you browse other days). */
 export function useDay(): { day: string; realToday: string; isToday: boolean } {
@@ -32,6 +34,7 @@ export function TodayPage() {
   const { day: today, realToday, isToday } = useDay();
   const [qlOpen, setQlOpen] = useState<'new' | 'edit' | null>(null);
   const [undoOpen, setUndoOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(false);
   const go = (d: string) => nav(d === realToday ? '/' : `/?date=${d}`);
   const data = useLiveQuery(async () => {
     const program = await R.activeProgram(db);
@@ -54,7 +57,9 @@ export function TodayPage() {
     const logged = await R.sessionsOnDate(db, today);
     const doneDates = new Set((await db.sessions.where('localDate').between(today, addDays(today, 8), true, true).toArray()).filter((x) => x.status === 'completed').map((x) => `${x.localDate}|${x.templateId}`));
     const unresolved = await db.exercises.where('status').equals('unresolved').count();
-    return { program, schedule, plan, template, rows, upcoming, tplMap, warmEx, checked, logged, unresolved, doneDates } as const;
+    const active = await activeSession(db);
+    const activeName = active ? (active.templateId ? (await db.templates.get(active.templateId))?.name : undefined) ?? t('wo.emptyName') : undefined;
+    return { program, schedule, plan, template, rows, upcoming, tplMap, warmEx, checked, logged, unresolved, doneDates, active, activeName } as const;
   }, [db, today]);
 
   const phase = useMemo(() => (data?.program ? phaseOf(data.program.weeks, today) : null), [data, today]);
@@ -84,8 +89,20 @@ export function TodayPage() {
       </>
     );
   }
-  const { plan, template, rows, upcoming, tplMap, warmEx, checked, logged, unresolved, program, doneDates } = data;
+  const { plan, template, rows, upcoming, tplMap, warmEx, checked, logged, unresolved, program, doneDates, active, activeName } = data;
   const done = plan.kind === 'planned' ? logged.find((x) => x.status === 'completed' && x.templateId === plan.templateId) : undefined;
+  const others = logged.filter((x) => x.status === 'completed' && x.id !== done?.id);
+  const activeHere = active && plan.kind === 'planned' && active.localDate === today && active.templateId === plan.templateId ? active : undefined;
+  const canLog = today <= realToday;
+  const start = async (templateId: string | null) => {
+    setStartOpen(false);
+    try {
+      const week = plan.kind === 'planned' && templateId === plan.templateId ? plan.week : weekOf(program.weeks, today);
+      const s = await startWorkout(db, { programId: program.id, templateId: templateId ?? undefined, week, date: today, today: realToday });
+      nav(`/workout/${s.id}`);
+    } catch (e) { notifications.show({ color: 'red', message: e instanceof Error ? e.message : t('common.error') }); }
+  };
+  const addSets = async (id: string) => { await quickToFull(db, id); nav(`/workout/${id}`); };
   const saveNew = async (v: { durationMin: number | null; kneePain: number | null; energy: number | null; notes: string }) => {
     if (plan.kind !== 'planned') return;
     await markDone(db, { ...v, date: today, today: realToday, programId: program.id, templateId: plan.templateId, week: plan.week });
@@ -104,6 +121,14 @@ export function TodayPage() {
       {header}
       <Stack gap="sm">
         {!isToday && <Button variant="subtle" size="sm" onClick={() => go(realToday)} data-testid="back-today" style={{ alignSelf: 'flex-start' }}>{t('day.backToToday')}</Button>}
+        {active && !activeHere && (
+          <Card withBorder radius="lg" padding="sm" bg="var(--mantine-color-mint-light)" data-testid="active-card">
+            <Group justify="space-between" wrap="nowrap">
+              <div><Text fw={700}>{t('wo.inProgress', { name: activeName ?? '' })}</Text><Text fz="sm" c="dimmed">{formatDate(active.localDate)}{active.status === 'paused' ? ` · ${t('wo.paused')}` : ''}</Text></div>
+              <Button leftSection={<IconPlayerPlay size={18} />} onClick={() => nav(`/workout/${active.id}`)} data-testid="active-continue">{t('wo.continue')}</Button>
+            </Group>
+          </Card>
+        )}
         <Card withBorder radius="lg" padding="md" data-testid="today-card">
           <Group justify="space-between" align="flex-start" wrap="nowrap">
             <div>
@@ -116,6 +141,7 @@ export function TodayPage() {
             <Stack gap={4} mt="sm">
               <Title order={2} data-testid="today-template">{template.name}</Title>
               <Text c="dimmed" fz="sm">{template.focus}</Text>
+              <Text fz="sm" fw={600} data-testid="today-estimate">{t('wo.estimate', { n: rows.length, min: estimateMinutes(rows, template.warmup) })}</Text>
               {done ? (
                 <Card withBorder padding="sm" radius="md" mt="xs" bg="var(--mantine-color-mint-light)" data-testid="done-card">
                   <Group justify="space-between" wrap="nowrap">
@@ -127,19 +153,35 @@ export function TodayPage() {
                       </Group>
                     )}
                   </Group>
+                  {done.logType === 'quick'
+                    ? <Button size="md" mt="xs" fullWidth variant="light" leftSection={<IconListDetails size={18} />} onClick={() => void addSets(done.id)} data-testid="ql-add-sets">{t('wo.addSetsToLog')}</Button>
+                    : <Button size="md" mt="xs" fullWidth variant="light" leftSection={<IconListDetails size={18} />} onClick={() => nav(`/workout/${done.id}`)} data-testid="open-session">{t('wo.viewSets')}</Button>}
                   {(done.durationMin != null || done.kneePain != null || done.energy != null) && <Text fz="sm" mt={4} data-testid="done-summary">{t('ql.summary', { min: done.durationMin ?? t('ql.dash'), knee: done.kneePain ?? t('ql.dash'), energy: done.energy ?? t('ql.dash') })}</Text>}
                   {done.notes && <Text fz="sm" c="dimmed">{done.notes}</Text>}
                 </Card>
-              ) : today <= realToday ? (
-                <Button size="lg" mt="xs" fullWidth leftSection={<IconCheck />} onClick={() => setQlOpen('new')} data-testid="mark-done">{t('ql.mark')}</Button>
+              ) : activeHere ? (
+                <Button size="lg" mt="xs" fullWidth leftSection={<IconPlayerPlay />} onClick={() => nav(`/workout/${activeHere.id}`)} data-testid="continue-workout">{t('wo.continue')}</Button>
+              ) : canLog ? (
+                <>
+                  <Button size="lg" mt="xs" fullWidth leftSection={<IconPlayerPlay />} onClick={() => void start(plan.templateId)} data-testid="start-workout">{isToday ? t('today.start') : t('wo.logThisDay')}</Button>
+                  <Group grow gap="xs">
+                    <Button variant="default" leftSection={<IconCheck size={18} />} onClick={() => setQlOpen('new')} data-testid="mark-done">{t('wo.markNoSets')}</Button>
+                    <Button variant="subtle" onClick={() => setStartOpen(true)} data-testid="start-other">{t('wo.otherWorkout')}</Button>
+                  </Group>
+                </>
               ) : (
                 <Text fz="sm" c="dimmed" mt="xs" data-testid="future-note">{t('ql.future')}</Text>
               )}
-              <Text fz="xs" c="dimmed">{t('today.startSoon')}</Text>
             </Stack>
           )}
           {plan.kind === 'rest' && <Stack gap={4} mt="sm"><Group gap="xs"><IconMoon /><Title order={2}>{t('today.rest')}</Title></Group><Text c="dimmed" fz="sm">{plan.note ?? t('today.restBody')}</Text></Stack>}
           {plan.kind === 'none' && <Stack gap={4} mt="sm"><Title order={3}>{ended ? t('today.programEnded') : t('today.nothing')}</Title><Text c="dimmed" fz="sm">{ended ? t('today.programEndedBody') : t('today.nothingBody')}</Text></Stack>}
+          {plan.kind !== 'planned' && canLog && !active && <Button mt="sm" variant="light" fullWidth leftSection={<IconPlus size={18} />} onClick={() => setStartOpen(true)} data-testid="start-any">{t('wo.startAny')}</Button>}
+          {others.map((o) => (
+            <Button key={o.id} mt="xs" variant="subtle" fullWidth justify="space-between" rightSection={<IconChevronRight size={16} />} onClick={() => nav(`/workout/${o.id}`)} data-testid="other-session">
+              {t('wo.alsoLogged', { name: (o.templateId ? tplMap.get(o.templateId)?.name : undefined) ?? t('wo.emptyName') })}
+            </Button>
+          ))}
         </Card>
 
         <BackupIndicator compact />
@@ -183,6 +225,7 @@ export function TodayPage() {
       <QuickLogSheet opened={qlOpen !== null} title={qlOpen === 'edit' ? t('ql.editTitle', { name: template?.name ?? '' }) : t('ql.title', { name: template?.name ?? '' })}
         submitLabel={qlOpen === 'edit' ? t('ql.update') : t('ql.save')} onClose={() => setQlOpen(null)} onSubmit={qlOpen === 'edit' ? saveEdit : saveNew}
         initial={qlOpen === 'edit' && done ? { durationMin: done.durationMin ?? null, kneePain: done.kneePain ?? null, energy: done.energy ?? null, notes: done.notes } : undefined} />
+      <StartSheet opened={startOpen} onClose={() => setStartOpen(false)} onPick={(id) => void start(id)} />
       <ConfirmSheet opened={undoOpen} danger title={t('ql.undoTitle')} body={t('ql.undoBody')} confirmLabel={t('ql.undo')} onClose={() => setUndoOpen(false)}
         onConfirm={() => { if (done) void undoQuickLog(db, done.id).then(() => setUndoOpen(false)); }} />
     </>

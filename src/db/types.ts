@@ -78,14 +78,33 @@ export interface WorkoutSession extends Stamped {
   dateSource?: string;
   /** 'quick' = completed with summary only (no sets); 'full' = logged set by set (Phase 2). */
   logType?: 'quick' | 'full';
+  /** Soft delete (BR-SES-07): set when discarded; restorable for 30 days. */
+  discardedAt?: ISOTime | null;
+  /** Session status before discard, used by restore. */
+  statusBeforeDiscard?: SessionStatus;
+  /** Timestamp of the last edit, used by the 6-hour rule (BR-SES-09). */
+  lastActivityAt?: ISOTime | null;
+  /** When the current pause started (null when running). */
+  pausedAt?: ISOTime | null;
 }
 export type SEStatus = 'pending' | 'in_progress' | 'completed' | 'skipped' | 'replaced' | 'not_recorded';
 export interface WorkoutSessionExercise extends Stamped {
   id: ID; sessionId: ID; exerciseId: ID; orderIndex: number; status: SEStatus; supersetGroup: string | null;
-  snapshot?: { targetSets?: number; targetReps?: string; restSec?: number; templateExerciseId?: ID };
-  cardio?: { durationMin?: number; durationSource?: string; distanceM?: number };
+  snapshot?: {
+    targetSets?: number; targetReps?: string; restSec?: number; templateExerciseId?: ID; role?: string; templateNotes?: string;
+    /** BR-PP-05: previous performance frozen when the exercise was added to the session. */
+    previous?: PreviousPerformance | null;
+  };
+  cardio?: { durationMin?: number; durationSource?: string; distanceM?: number; inclinePct?: number; speedKmh?: number; rounds?: number; roundMin?: number };
   notes: string;
+  /** WO-14 knee/area pain after the exercise (0–10). */
+  painScore?: number | null;
+  replacedById?: ID | null;
 }
+export interface PreviousSet { weightKg: number | null; reps: number | null; setType: SetType; durationSec?: number | null; rpe?: number | null }
+export interface PreviousPerformance { sessionId: ID; localDate: ISODate; sets: PreviousSet[]; warmups: PreviousSet[]; painScore: number | null; templateName?: string;
+  /** The session before that one (for BR-PO-06 "below range twice"). */
+  olderSets?: PreviousSet[] }
 export type SetType = 'warmup' | 'working' | 'drop' | 'failure';
 export interface WorkoutSet extends Stamped {
   id: ID; sessionExerciseId: ID; orderIndex: number; setType: SetType; weightKg: number | null; inputUnit: 'kg' | 'lb';

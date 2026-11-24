@@ -13,6 +13,7 @@ import { ConfirmSheet, EmptyState, ExerciseCard, KneeBadge, PageHeader, Section 
 import { ExercisePicker } from '../../components/ExercisePicker';
 import { alternativesFor, mergeExercises, renameExercise, setArchived, setUserVideo, LibraryError } from './libraryOps';
 import * as R from '../../db/repos';
+import { ExerciseHistoryList } from '../workout/ExerciseHistory';
 
 const err = (e: unknown) => notifications.show({ color: 'red', message: e instanceof LibraryError ? e.message : t('common.error') });
 
@@ -110,6 +111,7 @@ export function ExerciseDetailPage() {
           </Card>
         </Section>
 
+        <Section title={t('wo.yourHistory')}><ExerciseHistoryList exerciseId={ex.id} limit={20} /></Section>
         {ex.instructions.length > 0 && <Section title={t('ex.instructions')}><Card withBorder padding="sm"><List type="ordered" spacing={6}>{ex.instructions.map((s, i) => <List.Item key={i}>{s}</List.Item>)}</List></Card></Section>}
         {ex.commonMistakes.length > 0 && <Section title={t('ex.mistakes')}><Card withBorder padding="sm"><List spacing={4}>{ex.commonMistakes.map((s, i) => <List.Item key={i}>{s}</List.Item>)}</List></Card></Section>}
         {(ex.safetyNotes.length > 0 || ex.tags.includes('knee_caution')) && (

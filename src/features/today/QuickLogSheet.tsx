@@ -37,7 +37,7 @@ export function QuickLogSheet({ opened, title, initial, submitLabel, onClose, on
 }
 
 /** Number picker with ≥ 44 pt buttons (a segmented control with 11 options would be too narrow on a phone). */
-function Scale({ values, cols, value, onChange, label, testId }: { values: number[]; cols: number; value: number | null; onChange: (n: number | null) => void; label: string; testId: string }) {
+export function Scale({ values, cols, value, onChange, label, testId }: { values: number[]; cols: number; value: number | null; onChange: (n: number | null) => void; label: string; testId: string }) {
   return (
     <SimpleGrid cols={cols} spacing={6} role="radiogroup" aria-label={label} data-testid={testId}>
       {values.map((n) => (

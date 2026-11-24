@@ -8,6 +8,7 @@ import { Shell } from './Shell';
 import type { WeightDB } from '../db/schema';
 import { TodayPage } from '../features/today/TodayPage';
 import { PlanPage } from '../features/today/PlanPage';
+import { WorkoutPage } from '../features/workout/WorkoutPage';
 import { HistoryPage } from '../features/history/HistoryPage';
 import { LibraryPage } from '../features/library/LibraryPage';
 import { ExerciseDetailPage } from '../features/library/ExerciseDetailPage';
@@ -39,6 +40,7 @@ export function App({ db }: { db: WeightDB }) {
             <Routes>
               <Route path="/" element={<TodayPage />} />
               <Route path="/plan" element={<PlanPage />} />
+              <Route path="/workout/:id" element={<WorkoutPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/library" element={<LibraryPage />} />
               <Route path="/library/new" element={<NewExercisePage />} />
