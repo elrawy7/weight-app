@@ -1,0 +1,21 @@
+# ── Personal data: NEVER commit (public GitHub Pages repo) ──
+/data/
+/docs/
+*.weight-backup.zip
+weight-import-*.json
+/tests/private/
+/scripts/phase0_normalize.py
+/scripts/build_import_package.py
+
+# build / tooling
+node_modules/
+dist/
+dev-dist/
+coverage/
+test-results/
+playwright-report/
+.vite/
+*.log
+.DS_Store
+*.tsbuildinfo
+phase1-screens.png

@@ -1,0 +1,131 @@
+/** English UI dictionary (NFR-I18N-01). Every UI string comes from here; Arabic (OPT-05) will add ar.ts with the same keys. */
+export const en = {
+  'app.name': 'Weight',
+  'nav.today': 'Today', 'nav.history': 'History', 'nav.library': 'Library', 'nav.progress': 'Progress', 'nav.more': 'More',
+  'common.save': 'Save', 'common.cancel': 'Cancel', 'common.delete': 'Delete', 'common.edit': 'Edit', 'common.add': 'Add', 'common.close': 'Close',
+  'common.confirm': 'Confirm', 'common.back': 'Back', 'common.done': 'Done', 'common.remove': 'Remove', 'common.replace': 'Replace', 'common.loading': 'Loading…',
+  'common.none': 'None', 'common.all': 'All', 'common.yes': 'Yes', 'common.no': 'No', 'common.min': 'min', 'common.sec': 's', 'common.kg': 'kg', 'common.lb': 'lb',
+  'common.week': 'Week {n}', 'common.weekShort': 'W{n}', 'common.rpe': 'RPE {v}', 'common.sets': '{n} sets', 'common.rest': 'Rest {s}s', 'common.search': 'Search',
+  'common.notSet': 'Not set', 'common.error': 'Something went wrong', 'common.saved': 'Saved', 'common.optional': 'optional', 'common.reorder': 'Drag to reorder',
+  'common.moveUp': 'Move up', 'common.moveDown': 'Move down', 'common.open': 'Open', 'common.phase': 'Phase {n}',
+
+  'today.title': 'Today', 'today.noProgram': 'No active program yet', 'today.noProgramBody': 'Import your Notion plan or create a program to see today’s workout here.',
+  'today.import': 'Import from Notion', 'today.createProgram': 'Create a program', 'today.rest': 'Rest day', 'today.restBody': 'Easy walk (30–45 min) and mobility if you like.',
+  'today.nothing': 'Nothing scheduled', 'today.nothingBody': 'This date is outside the program window.', 'today.weekPhase': 'Week {week} · {phase} · RPE {rpe}',
+  'today.programDay': 'Day {n} of {total}', 'today.start': 'Start workout', 'today.startSoon': 'Workout logging arrives in Phase 2 – this preview shows the plan.',
+  'today.warmup': 'Warm-up', 'today.warmupDone': '{done}/{total} done', 'today.exercises': 'Exercises', 'today.upcoming': 'Next 7 days', 'today.exception': 'Changed day',
+  'today.completedHere': 'Logged', 'today.unresolved': '{n} exercises from Notion need a decision', 'today.unresolvedBody': 'Tell the app which equipment you used so history stays comparable.',
+  'today.resolve': 'Resolve', 'today.programEnded': 'Program finished', 'today.programEndedBody': 'Week 5 is a deload. Duplicate the program to plan the next block.',
+  'today.knee': 'Knee-friendly', 'today.kneeCaution': 'Knee caution', 'today.superset': 'Superset {g}',
+
+  'backup.indicator.never': 'No backup yet', 'backup.indicator.due': 'Last backup {days} days ago', 'backup.indicator.ok': 'Backed up {when}',
+  'backup.now': 'Back up now', 'backup.when.today': 'today', 'backup.when.days': '{n} days ago', 'backup.title': 'Backup & restore', 'backup.body': 'Your data lives only on this iPhone. A backup is a ZIP file you keep in Files or iCloud Drive.',
+  'backup.creating': 'Creating backup…', 'backup.created': 'Backup created: {file}', 'backup.shared': 'Backup saved', 'backup.cancelled': 'Backup not saved',
+  'backup.last': 'Last backup', 'backup.history': 'Backups made on this device', 'backup.restore': 'Restore from a backup', 'backup.restoreBody': 'Choose a weight-backup ZIP. It is checked completely before anything changes.',
+  'backup.chooseFile': 'Choose backup file', 'backup.preview': 'Backup from {date} · app {version}', 'backup.identical': 'This backup is identical to the data on this device. Nothing to restore.',
+  'backup.replaceWarning': 'Restoring replaces ALL data on this device with the backup. A safety snapshot is taken first.', 'backup.restoreConfirm': 'Replace my data',
+  'backup.restored': 'Restored {n} records', 'backup.reminderTitle': 'Time for a backup', 'backup.reminderBody': 'Your data is only on this device. Save a backup to Files or iCloud Drive.',
+  'backup.records': '{n} records', 'backup.includes': 'Includes', 'backup.counts.sessions': 'Sessions', 'backup.counts.sets': 'Sets', 'backup.counts.exercises': 'Exercises',
+  'backup.counts.templates': 'Templates', 'backup.counts.bodyMeasurements': 'Body measurements', 'backup.counts.progressPhotos': 'Photos',
+
+  'history.title': 'History', 'history.empty': 'No workouts yet', 'history.emptyBody': 'Completed workouts appear here. Import your Notion log to bring in 21 and 23 Nov.',
+  'history.sets': '{n} sets', 'history.fromNotion': 'From Notion', 'history.cardio': '{min} min', 'history.notRecorded': 'Not recorded', 'history.assumed': 'Set type assumed (working)',
+  'history.phaseNote': 'Editing and logging new workouts arrive in Phase 2.',
+
+  'library.title': 'Library', 'library.search': 'Search exercises, muscles, Arabic names', 'library.count': '{n} exercises', 'library.category': 'Category',
+  'library.equipment': 'Equipment', 'library.muscle': 'Muscle', 'library.kneeFriendly': 'Knee-friendly only', 'library.showArchived': 'Show archived', 'library.new': 'New exercise',
+  'library.empty': 'No exercises match', 'library.emptyBody': 'Try another word or clear the filters.', 'library.unresolved': 'Needs decision', 'library.custom': 'Custom', 'library.archived': 'Archived',
+  'library.clear': 'Clear filters',
+
+  'ex.instructions': 'How to do it', 'ex.mistakes': 'Common mistakes', 'ex.safety': 'Safety', 'ex.muscles': 'Muscles', 'ex.primary': 'Primary', 'ex.secondary': 'Secondary',
+  'ex.details': 'Details', 'ex.loadMode': 'Weight is logged as', 'ex.increment': 'Step', 'ex.rest': 'Default rest', 'ex.equipment': 'Equipment', 'ex.tracking': 'Tracking',
+  'ex.video': 'Video', 'ex.watch': 'Watch on YouTube', 'ex.searchYoutube': 'Search YouTube', 'ex.videoVerified': 'Verified {date} · {channel}', 'ex.videoUser': 'Your link',
+  'ex.videoMissing': 'No verified video yet – the button searches YouTube for “{q}”.', 'ex.needsInternet': 'Needs internet', 'ex.addLink': 'Add your YouTube link', 'ex.changeLink': 'Change link',
+  'ex.removeLink': 'Remove link', 'ex.linkPlaceholder': 'https://youtu.be/…', 'ex.alternatives': 'Alternatives', 'ex.altDefined': 'From the plan', 'ex.altSuggested': 'Same muscle & movement',
+  'ex.reason.knee_friendly': 'Knee-friendly', 'ex.reason.similar': 'Similar', 'ex.reason.same_muscle': 'Same muscle', 'ex.notes': 'My notes', 'ex.notesPlaceholder': 'Seat 4, pin 7…',
+  'ex.rename': 'Rename', 'ex.archive': 'Archive', 'ex.unarchive': 'Restore from archive', 'ex.merge': 'Merge into…', 'ex.mergeTitle': 'Merge “{name}” into another exercise',
+  'ex.mergeBody': 'All history and plan rows move to the exercise you choose. “{name}” becomes a search alias.', 'ex.merged': 'Merged into {name}', 'ex.usage': 'Used in {rows} plan rows · {sessions} logged entries',
+  'ex.incrementOverride': 'My gym’s step for this exercise', 'ex.unresolvedTitle': 'Which equipment did you use?', 'ex.unresolvedBody': 'Notion said “{name}”. Choose the matching exercise in Data migration.',
+  'ex.kneeTag': 'Knee caution – keep pain ≤ 3/10', 'ex.kneeFriendlyTag': 'Knee-friendly', 'ex.aliases': 'Also known as', 'ex.notFound': 'Exercise not found', 'ex.arabic': 'Arabic name',
+  'ex.name': 'Name', 'ex.newTitle': 'New exercise', 'ex.create': 'Create exercise', 'ex.mechanic': 'Movement type', 'ex.defaultRest': 'Default rest (s)', 'ex.incrementKg': 'Weight step (kg)',
+  'ex.primaryMuscles': 'Primary muscles', 'ex.secondaryMuscles': 'Secondary muscles', 'ex.instructionsInput': 'Instructions (one step per line)', 'ex.requiresNew': 'This change needs a new exercise because the weight type differs and history exists.',
+
+  'loadMode.total': 'Total weight', 'loadMode.per_hand': 'Per hand (each dumbbell)', 'loadMode.stack': 'Machine stack (pin number in kg)', 'loadMode.bodyweight': 'Bodyweight (+ added load)',
+  'loadMode.assist': 'Assistance (lower = harder)', 'loadMode.band': 'Band', 'loadMode.none': 'No load',
+  'tracking.weight_reps': 'Weight × reps', 'tracking.reps': 'Reps', 'tracking.reps_per_side': 'Reps per side', 'tracking.duration': 'Time', 'tracking.duration_distance': 'Time & distance', 'tracking.rounds': 'Rounds',
+  'mechanic.compound': 'Compound', 'mechanic.isolation': 'Isolation', 'mechanic.cardio': 'Cardio', 'mechanic.mobility': 'Mobility',
+  'cat.chest': 'Chest', 'cat.back': 'Back', 'cat.shoulders': 'Shoulders', 'cat.biceps': 'Biceps', 'cat.triceps': 'Triceps', 'cat.forearms': 'Forearms', 'cat.quadriceps': 'Quads',
+  'cat.hamstrings': 'Hamstrings', 'cat.glutes': 'Glutes', 'cat.calves': 'Calves', 'cat.abdominals': 'Core', 'cat.cardio': 'Cardio', 'cat.mobility': 'Warm-up & mobility', 'cat.full_body': 'Full body',
+
+  'progress.title': 'Progress', 'progress.soon': 'Charts arrive in Phase 3', 'progress.soonBody': 'Strength, volume, PRs and body charts are built after workout logging (Phase 2).',
+  'progress.start': 'Start weight', 'progress.goal': 'Goal', 'progress.toGo': 'To go', 'progress.sessions': 'Workouts logged', 'progress.inferred': 'date inferred',
+
+  'more.title': 'More', 'more.programs': 'Programs & schedule', 'more.settings': 'Settings', 'more.equipment': 'Equipment & weight steps', 'more.storage': 'Storage',
+  'more.backup': 'Backup & restore', 'more.import': 'Import from Notion', 'more.migration': 'Data migration report', 'more.install': 'Install on iPhone', 'more.about': 'About',
+  'more.version': 'Version {v} · built {d}', 'more.privacy': 'No account, no server, no tracking. Your data never leaves this device unless you export it.', 'more.components': 'Component gallery',
+  'more.data': 'Data', 'more.app': 'App',
+
+  'prog.title': 'Programs', 'prog.new': 'New program', 'prog.newName': 'Program name', 'prog.active': 'Active', 'prog.draft': 'Draft', 'prog.archived': 'Archived',
+  'prog.setActive': 'Make active', 'prog.archive': 'Archive', 'prog.duplicate': 'Duplicate', 'prog.duplicated': 'Copy created as draft', 'prog.templates': 'Workouts',
+  'prog.addTemplate': 'Add workout', 'prog.templateName': 'Workout name', 'prog.schedule': 'Weekly schedule', 'prog.restDay': 'Rest', 'prog.exceptions': 'Changed days',
+  'prog.addException': 'Add changed day', 'prog.exceptionDate': 'Date', 'prog.exceptionWorkout': 'Workout (empty = rest/skipped)', 'prog.exceptionNote': 'Note', 'prog.weeks': 'Weeks & phases',
+  'prog.weekRange': '{start} – {end}', 'prog.empty': 'No programs yet', 'prog.emptyBody': 'Import your Notion plan or create one.', 'prog.window': '{start} → {end}',
+  'prog.rows': '{n} exercises', 'prog.templateCount': '{n} workouts', 'prog.planned': 'Planned dates from Notion', 'prog.notFound': 'Program not found', 'prog.deleteTemplate': 'Delete workout',
+  'prog.deleteTemplateBody': 'Removes “{name}” and its exercises from this program. Logged history is not affected.', 'prog.rule': 'Progression rule',
+  'prog.phaseName': 'Phase', 'prog.phaseRpe': 'Target RPE',
+
+  'tpl.notFound': 'Workout not found', 'tpl.addExercise': 'Add exercise', 'tpl.warmup': 'Warm-up', 'tpl.editWarmup': 'Edit warm-up', 'tpl.addWarmupItem': 'Add item',
+  'tpl.warmupExercise': 'Exercise (or leave empty for a note)', 'tpl.warmupLabel': 'Note', 'tpl.warmupDose': 'Dose', 'tpl.setsByWeek': 'Sets per week', 'tpl.reps': 'Reps / time',
+  'tpl.restSec': 'Rest (seconds)', 'tpl.superset': 'Superset group', 'tpl.supersetNone': 'No superset', 'tpl.notes': 'Notes', 'tpl.role': 'Role', 'tpl.role.working': 'Working',
+  'tpl.role.cardio': 'Cardio', 'tpl.role.core': 'Core', 'tpl.editRow': 'Edit exercise', 'tpl.pick': 'Choose exercise', 'tpl.focus': 'Focus', 'tpl.empty': 'No exercises yet',
+  'tpl.emptyBody': 'Add exercises from the library.', 'tpl.sameAll': 'Same every week',
+
+  'set.title': 'Settings', 'set.workout': 'Workout screen', 'set.units': 'Weight unit', 'set.theme': 'Appearance', 'set.theme.system': 'System', 'set.theme.dark': 'Dark', 'set.theme.light': 'Light',
+  'set.weekStart': 'Week starts on', 'set.defaultRest': 'Default rest timer', 'set.sound': 'Sound at end of rest', 'set.spoken': 'Spoken cues (“10 seconds”, “Go”)',
+  'set.keepAwake': 'Keep screen awake during workouts', 'set.showRpe': 'Show RPE on every set', 'set.backupDays': 'Backup reminder after (days)', 'set.workoutNote': 'Timer, sound, spoken cues and keep-awake are used by the workout screen (Phase 2).',
+  'set.profile': 'Profile', 'set.name': 'Name', 'set.height': 'Height (cm)', 'set.timezone': 'Time zone', 'set.supported': 'Supported on this device', 'set.unsupported': 'Not supported on this device',
+
+  'eq.title': 'Equipment & weight steps', 'eq.body': 'Set your gym’s real steps so + / − and suggestions match the machines (e.g. pulldown +6.5 kg).',
+  'eq.default': 'Default {v} kg', 'eq.step': 'Step (kg)', 'eq.bars': 'Bars', 'eq.barbell': 'Olympic barbell (kg)', 'eq.smith': 'Smith machine bar (kg, empty = unknown)', 'eq.ez': 'EZ bar (kg)',
+  'eq.plates': 'Plates available (kg, comma-separated)', 'eq.reset': 'Use default',
+
+  'st.title': 'Storage', 'st.persisted': 'Persistent storage', 'st.granted': 'Granted – iOS will not clear this data under storage pressure.',
+  'st.notGranted': 'Not granted – iOS may clear website data. Keep the app on your Home Screen and back up regularly.', 'st.unknown': 'Not checked yet', 'st.request': 'Ask again',
+  'st.usage': 'Used {used} of {quota}', 'st.usageUnknown': 'Usage not available on this browser', 'st.backupAdvice': 'Back up regularly – a ZIP in Files or iCloud Drive is your safety net.',
+
+  'imp.title': 'Import from Notion', 'imp.body': 'Open the weight-import file you received in the chat. It is checked completely before anything is written.',
+  'imp.choose': 'Choose import file', 'imp.preview': 'Ready to import', 'imp.confirm': 'Import now', 'imp.imported': 'Imported', 'imp.already': 'Already imported – nothing was added.',
+  'imp.counts.programs': 'Program', 'imp.counts.templates': 'Workouts', 'imp.counts.templateRows': 'Plan rows', 'imp.counts.warmupRows': 'Warm-up items', 'imp.counts.weeks': 'Weeks',
+  'imp.counts.plannedSessions': 'Planned sessions', 'imp.counts.sessions': 'Logged sessions', 'imp.counts.sessionExercises': 'Logged exercises', 'imp.counts.sets': 'Logged sets',
+  'imp.counts.bodyMeasurements': 'Body measurements', 'imp.counts.goals': 'Goals', 'imp.counts.unresolved': 'Need your decision', 'imp.counts.legacy': 'Undated values',
+  'imp.excluded': 'Not imported', 'imp.missing': 'Missing from the library: {ids}', 'imp.file': 'File: {f}', 'imp.next': 'Next: resolve the {n} exercises below.',
+  'imp.goToday': 'Go to Today',
+
+  'mig.title': 'Data migration', 'mig.none': 'Nothing imported yet', 'mig.noneBody': 'Import your Notion plan from More → Import from Notion.',
+  'mig.importedAt': 'Imported {when} from {file}', 'mig.unresolved': 'Decisions', 'mig.logged': 'Logged in Notion', 'mig.usedIn': 'Used in {t}', 'mig.mapTo': 'Map to',
+  'mig.map': 'Use this exercise', 'mig.later': 'Decide later', 'mig.laterNote': 'Kept as is: you can still log it, but it is left out of records and progression.',
+  'mig.mapped': 'Mapped to {name} · {rows} plan rows, {sets} sets updated', 'mig.pendingLater': 'Decided later', 'mig.issues': 'Notes from the migration', 'mig.excluded': 'Excluded',
+  'mig.pages': 'Notion pages used', 'mig.counts': 'Imported', 'mig.issue.type': 'Type',
+
+  'inst.title': 'Install on your iPhone', 'inst.step1': 'Open this page in Safari.', 'inst.step2': 'Tap the Share button (square with an arrow).',
+  'inst.step3': 'Scroll and tap “Add to Home Screen”.', 'inst.step4': 'Keep “Open as Web App” switched on (iOS 26+), then tap Add.',
+  'inst.step5': 'Open Weight from the Home Screen icon. Your data then belongs to the installed app.', 'inst.why': 'Why install? The Home-Screen app works offline, keeps its data longer and can keep the screen awake.',
+  'inst.installed': 'You are using the installed app.', 'inst.dismiss': 'Got it', 'inst.banner': 'Install Weight on your Home Screen for offline use and safer storage.', 'inst.how': 'How',
+  'inst.dataNote': 'Safari and the Home-Screen app keep separate data. Import your plan inside the installed app.',
+
+  'upd.available': 'An update is available.', 'upd.reload': 'Update', 'upd.later': 'Later', 'upd.blocked': 'Update will be offered after your workout.',
+
+  'rec.title': 'Your data needs attention', 'rec.body': 'The app could not open its database after an update. Your data has not been deleted.',
+  'rec.error': 'Error: {msg}', 'rec.export': 'Export raw data (JSON)', 'rec.restore': 'Restore last snapshot', 'rec.restoreBody': 'Puts the database back exactly as it was before the update ({date}).',
+  'rec.noSnapshot': 'No snapshot is available.', 'rec.restored': 'Snapshot restored ({n} records). Reload the app.', 'rec.reload': 'Reload', 'rec.exported': 'Raw data exported',
+
+  'dev.title': 'Component gallery', 'dev.c.NumberStepper': 'NumberStepper', 'dev.c.SetRow': 'SetRow', 'dev.c.ExerciseCard': 'ExerciseCard', 'dev.c.RestTimerBar': 'RestTimerBar', 'dev.c.StatCard': 'StatCard', 'dev.c.EmptyState': 'EmptyState', 'dev.c.ConfirmSheet': 'ConfirmSheet', 'dev.body': 'Design-system components in the current theme (used for visual snapshots).',
+  'demo.exercise': 'Flat Barbell Bench Press', 'demo.meta': '3 sets · 6–8 reps · rest 120 s', 'demo.statLabel': 'Volume', 'demo.statValue': '4,820 kg', 'demo.statHint': '+6% vs last',
+  'demo.confirmTitle': 'Discard changes?', 'demo.confirmBody': 'Your edits will be lost.', 'demo.open': 'Open confirm sheet', 'demo.rest': 'Rest', 'demo.previous': 'Previous 40 × 8',
+  'demo.emptyTitle': 'Nothing here yet', 'demo.emptyBody': 'Empty states explain what to do next.',
+
+  'ui.decrease': 'Decrease', 'ui.increase': 'Increase', 'ui.weight': 'Weight', 'ui.reps': 'Reps', 'ui.complete': 'Mark set complete', 'ui.setN': 'Set {n}', 'ui.restLeft': '{s} s left',
+  'ui.pause': 'Pause', 'ui.skip': 'Skip', 'ui.addTime': '+30 s',
+} as const;
+
+export type MsgKey = keyof typeof en;
