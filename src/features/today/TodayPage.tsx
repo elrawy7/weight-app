@@ -16,6 +16,8 @@ import type { Exercise, WorkoutTemplate } from '../../db/types';
 import * as R from '../../db/repos';
 import { activeSession, estimateMinutes, quickToFull, startWorkout } from '../workout/workoutOps';
 import { StartSheet } from '../workout/StartSheet';
+import { ShiftSheet } from '../workout/ShiftSheet';
+import { restNote } from './notes';
 
 /** The real local date (profile time zone) and the day being viewed (`?date=` lets you browse other days). */
 export function useDay(): { day: string; realToday: string; isToday: boolean } {
@@ -35,6 +37,7 @@ export function TodayPage() {
   const [qlOpen, setQlOpen] = useState<'new' | 'edit' | null>(null);
   const [undoOpen, setUndoOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
+  const [shiftFrom, setShiftFrom] = useState<string | null>(null);
   const go = (d: string) => nav(d === realToday ? '/' : `/?date=${d}`);
   const data = useLiveQuery(async () => {
     const program = await R.activeProgram(db);
@@ -62,7 +65,12 @@ export function TodayPage() {
     return { program, schedule, plan, template, rows, upcoming, tplMap, warmEx, checked, logged, unresolved, doneDates, active, activeName } as const;
   }, [db, today]);
 
-  const phase = useMemo(() => (data?.program ? phaseOf(data.program.weeks, today) : null), [data, today]);
+  // A workout moved by a plan shift keeps its own week, so show that week's phase (PROG-07).
+  const phase = useMemo(() => {
+    if (!data?.program) return null;
+    const w = data.plan.kind === 'planned' ? data.plan.week : null;
+    return (w ? data.program.weeks.find((x) => x.week === w) : null) ?? phaseOf(data.program.weeks, today);
+  }, [data, today]);
 
   if (!data) return null;
   const header = (
@@ -168,13 +176,17 @@ export function TodayPage() {
                     <Button variant="default" leftSection={<IconCheck size={18} />} onClick={() => setQlOpen('new')} data-testid="mark-done">{t('wo.markNoSets')}</Button>
                     <Button variant="subtle" onClick={() => setStartOpen(true)} data-testid="start-other">{t('wo.otherWorkout')}</Button>
                   </Group>
+                  {!isToday && !active && <Button variant="light" leftSection={<IconPlayerPlay size={18} />} onClick={() => setShiftFrom(today)} data-testid="do-today">{t('shift.doToday')}</Button>}
                 </>
               ) : (
-                <Text fz="sm" c="dimmed" mt="xs" data-testid="future-note">{t('ql.future')}</Text>
+                <>
+                  <Button size="lg" mt="xs" fullWidth leftSection={<IconPlayerPlay />} onClick={() => setShiftFrom(today)} disabled={!!active} data-testid="do-today">{t('shift.doToday')}</Button>
+                  <Text fz="xs" c="dimmed" data-testid="future-note">{active ? t('shift.finishFirst') : t('shift.futureNote')}</Text>
+                </>
               )}
             </Stack>
           )}
-          {plan.kind === 'rest' && <Stack gap={4} mt="sm"><Group gap="xs"><IconMoon /><Title order={2}>{t('today.rest')}</Title></Group><Text c="dimmed" fz="sm">{plan.note ?? t('today.restBody')}</Text></Stack>}
+          {plan.kind === 'rest' && <Stack gap={4} mt="sm"><Group gap="xs"><IconMoon /><Title order={2}>{t('today.rest')}</Title></Group><Text c="dimmed" fz="sm">{restNote(plan.note) ?? t('today.restBody')}</Text></Stack>}
           {plan.kind === 'none' && <Stack gap={4} mt="sm"><Title order={3}>{ended ? t('today.programEnded') : t('today.nothing')}</Title><Text c="dimmed" fz="sm">{ended ? t('today.programEndedBody') : t('today.nothingBody')}</Text></Stack>}
           {plan.kind !== 'planned' && canLog && !active && <Button mt="sm" variant="light" fullWidth leftSection={<IconPlus size={18} />} onClick={() => setStartOpen(true)} data-testid="start-any">{t('wo.startAny')}</Button>}
           {others.map((o) => (
@@ -225,7 +237,9 @@ export function TodayPage() {
       <QuickLogSheet opened={qlOpen !== null} title={qlOpen === 'edit' ? t('ql.editTitle', { name: template?.name ?? '' }) : t('ql.title', { name: template?.name ?? '' })}
         submitLabel={qlOpen === 'edit' ? t('ql.update') : t('ql.save')} onClose={() => setQlOpen(null)} onSubmit={qlOpen === 'edit' ? saveEdit : saveNew}
         initial={qlOpen === 'edit' && done ? { durationMin: done.durationMin ?? null, kneePain: done.kneePain ?? null, energy: done.energy ?? null, notes: done.notes } : undefined} />
-      <StartSheet opened={startOpen} onClose={() => setStartOpen(false)} onPick={(id) => void start(id)} />
+      <StartSheet opened={startOpen} onClose={() => setStartOpen(false)} onPick={(id) => void start(id)} today={realToday}
+        onPickDay={isToday ? (d) => { setStartOpen(false); setShiftFrom(d); } : undefined} />
+      <ShiftSheet source={shiftFrom} today={realToday} onClose={() => setShiftFrom(null)} />
       <ConfirmSheet opened={undoOpen} danger title={t('ql.undoTitle')} body={t('ql.undoBody')} confirmLabel={t('ql.undo')} onClose={() => setUndoOpen(false)}
         onConfirm={() => { if (done) void undoQuickLog(db, done.id).then(() => setUndoOpen(false)); }} />
     </>

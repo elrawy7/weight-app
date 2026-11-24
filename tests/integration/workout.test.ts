@@ -346,3 +346,52 @@ describe('WO-17 estimated duration', () => {
     expect(W.estimateMinutes([])).toBe(5);
   });
 });
+
+describe('PROG-07 start another day today + shift (DB)', () => {
+  async function plan() {
+    await db.programs.update('p', { startDate: '2026-11-21', endDate: '2026-11-28', weeks: [{ week: 1, startDate: '2026-11-21', endDate: '2026-11-28', phase: 'A', rpe: '7' }] });
+    await db.templates.bulkAdd([
+      { id: 'co', programId: 'p', name: 'Conditioning', focus: '', orderIndex: 2, warmup: [], createdAt: T, updatedAt: T },
+      { id: 'lb', programId: 'p', name: 'Lower B', focus: '', orderIndex: 3, warmup: [], createdAt: T, updatedAt: T },
+    ]);
+    await db.schedules.add({ id: 'sch', programId: 'p', pattern: { SUN: null, MON: null, TUE: null, WED: null, THU: null, FRI: null, SAT: null }, startDate: '2026-11-21', endDate: '2026-11-28',
+      exceptions: [], planned: [
+        { date: '2026-11-23', templateId: 'ua', week: 1, targetRpe: '7' }, { date: '2026-11-24', templateId: 'co', week: 1, targetRpe: '7' },
+        { date: '2026-11-26', templateId: 'lb', week: 1, targetRpe: '7' },
+      ], createdAt: T, updatedAt: T });
+  }
+  it('lists missed + upcoming days; catch-up shifts and extends; undo restores', async () => {
+    const PS = await import('../../src/features/workout/planShift');
+    await plan();
+    const src = await PS.shiftSources(db, '2026-11-24');
+    expect(src.missed.map((x) => x.date)).toEqual(['2026-11-23']);
+    expect(src.upcoming.map((x) => x.date)).toEqual(['2026-11-26']);
+    const s = await PS.startFromDay(db, { today: '2026-11-24', source: '2026-11-23', shift: true });
+    expect(s).toMatchObject({ templateId: 'ua', localDate: '2026-11-24', programWeek: 1 });
+    const sch = (await db.schedules.get('sch'))!;
+    expect(sch.planned.filter((p) => p.date >= '2026-11-24').map((p) => `${p.date}:${p.templateId}`)).toEqual(['2026-11-24:ua', '2026-11-26:co', '2026-11-27:lb']);
+    expect((await db.programs.get('p'))!.endDate).toBe('2026-11-28'); // 27th is inside the plan already
+    await W.discardSession(db, s.id);
+    expect(await PS.undoShift(db)).toBe(true);
+    expect((await db.schedules.get('sch'))!.planned.map((p) => p.templateId)).toEqual(['ua', 'co', 'lb']);
+  });
+  it('extra workout: plan unchanged; a running workout blocks any change', async () => {
+    const PS = await import('../../src/features/workout/planShift');
+    await plan();
+    const s = await PS.startFromDay(db, { today: '2026-11-24', source: '2026-11-26', shift: false });
+    expect(s.templateId).toBe('lb');
+    expect((await db.schedules.get('sch'))!.planned.map((p) => p.templateId)).toEqual(['ua', 'co', 'lb']);
+    await expect(PS.startFromDay(db, { today: '2026-11-24', source: '2026-11-23', shift: true })).rejects.toThrow(/still in progress/);
+    expect((await db.schedules.get('sch'))!.planned.map((p) => p.templateId)).toEqual(['ua', 'co', 'lb']);
+  });
+  it('plan grows past the program end → program end and last week stretched', async () => {
+    const PS = await import('../../src/features/workout/planShift');
+    await plan();
+    await db.schedules.update('sch', { endDate: '2026-11-26' });
+    await db.programs.update('p', { endDate: '2026-11-26', weeks: [{ week: 1, startDate: '2026-11-21', endDate: '2026-11-26', phase: 'A', rpe: '7' }] });
+    await PS.startFromDay(db, { today: '2026-11-24', source: '2026-11-23', shift: true });
+    const p = (await db.programs.get('p'))!;
+    expect(p.endDate).toBe('2026-11-27');
+    expect(p.weeks[0].endDate).toBe('2026-11-27');
+  });
+});

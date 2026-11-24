@@ -168,6 +168,16 @@ export const en = {
   'wo.historyTitle': '{name} – history', 'wo.historyEmpty': 'No completed sets for this exercise yet.', 'wo.bestSet': 'Best set: {set}', 'wo.yourHistory': 'Your history',
   'wo.estimate': '{n} exercises · ≈ {min} min', 'wo.prBackup': 'New personal best saved. Back up your data so it’s safe.', 'wo.backupNow': 'Back up',
   'wo.resumeTitle': 'Workout in progress', 'wo.resumeBody': '{name} · {date}. Your sets and timer are saved.', 'wo.notNow': 'Not now',
+  // PROG-07 – do another day's workout today, shift the plan
+  'shift.title': 'Do {name} today', 'shift.instead': 'It replaces today’s {name}. The workouts after it move to the next training day:',
+  'shift.restDay': 'Today is a rest day – it becomes a training day. The plan moves like this:', 'shift.moved': 'Moved to today',
+  'shift.more': '…and {n} more days', 'shift.endChanged': 'Plan now ends {now} (was {was}).', 'shift.endSame': 'The plan’s end date stays the same.',
+  'shift.restKept': 'Rest days stay rest days', 'shift.weekTravels': 'Each workout keeps its week',
+  'shift.confirm': 'Start and shift the plan', 'shift.extra': 'Extra workout – keep the plan', 'shift.done': 'Plan shifted.', 'shift.undone': 'Plan change undone.',
+  'shift.doToday': 'Do this workout today', 'shift.futureNote': 'Upcoming. You can do it today – the plan shifts to fit.', 'shift.finishFirst': 'Finish the workout in progress first.',
+  'shift.fromPlan': 'From your plan (shifts the plan)', 'shift.extraHead': 'Extra workout (plan unchanged)', 'shift.todayDoneNote': 'Today’s workout is done – these start as extra workouts.',
+  'shift.lastChange': 'Last plan change: {name} moved to its new day.', 'shift.undoPlan': 'Undo',
+  'plan.movedTo': 'Moved to {date}', 'plan.freed': 'Rest (freed by a plan shift)',
   'tmr.rest': 'Rest · {name}', 'tmr.minus': '−15 s', 'tmr.plus': '+15 s', 'tmr.resume': 'Resume rest timer', 'tmr.restart': 'Restart rest timer', 'tmr.finished': 'Rest finished – next set!',
   'tmr.finishedAgo': 'Rest finished {t} ago', 'tmr.dismiss': 'Dismiss', 'tmr.done': 'Go!', 'tmr.spoken': 'Rest over. Next set.', 'tmr.backToWorkout': 'Back to workout',
 } as const;

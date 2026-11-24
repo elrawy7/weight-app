@@ -215,4 +215,38 @@ test.describe('Phase 2 – workout logging (WO-01…17, TMR-01…03, QA-02)', ()
     await expect(page.getByTestId('other-session')).toBeVisible();
     await page.context().setOffline(false);
   });
+
+  test('PROG-07: do tomorrow\'s workout today → plan shifts (preview, confirm, undo)', async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-11-24T18:00:00+03:00') });
+    await importFixture(page);
+    await page.goto('./?e2e#/');
+    await expect(page.getByTestId('today-template')).toHaveText('Conditioning');
+    await page.getByTestId('day-next').click();
+    await expect(page.getByTestId('today-template')).toHaveText('Upper A');
+    await page.getByTestId('do-today').click();
+    await expect(page.getByTestId('shift-change')).toHaveCount(2);
+    await expect(page.getByTestId('shift-change').nth(0)).toContainText('Conditioning');
+    await expect(page.getByTestId('shift-change').nth(0)).toContainText('Upper A');
+    await expect(page.getByTestId('shift-end')).toHaveText('The plan’s end date stays the same.');
+    await assertHitAreas(page);
+    await page.screenshot({ path: shot('33-shift-preview') });
+    await page.getByTestId('shift-confirm').click();
+    await expect(page.getByTestId('wo-ex-name').first()).toHaveText('Flat Barbell Bench Press');
+    await expect(bench(page).getByTestId('wo-last')).toContainText('Sat 21 Nov');
+    await row(page, 0).getByTestId('set-check').click();
+    await page.getByTestId('wo-finish').click();
+    await page.getByTestId('finish-save').click();
+    // Today is now Upper A (done); tomorrow is Conditioning
+    await expect(page.getByTestId('today-template')).toHaveText('Upper A');
+    await expect(page.getByTestId('done-card')).toBeVisible();
+    await page.getByTestId('day-next').click();
+    await expect(page.getByTestId('today-template')).toHaveText('Conditioning');
+    // Full plan shows the new order; undo restores it
+    await page.getByTestId('open-plan').click();
+    await expect(page.getByTestId('status-2026-11-24')).toHaveText('Done');
+    await expect(page.getByTestId('plan-day').filter({ hasText: '25 Nov' })).toContainText('Conditioning');
+    await page.getByTestId('plan-undo').click();
+    await expect(page.getByTestId('plan-day').filter({ hasText: '25 Nov' })).toContainText('Upper A');
+    await expect(page.getByTestId('plan-undo-card')).toHaveCount(0);
+  });
 });

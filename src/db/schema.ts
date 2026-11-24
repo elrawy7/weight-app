@@ -71,7 +71,7 @@ export class WeightDB extends Dexie {
   kv!: Table<T.KV, string>;
 
   constructor(name = DB_NAME, versions: SchemaVersion[] = SCHEMA_VERSIONS) {
-    super(name);
+    super(name, { cache: 'disabled' });
     for (const v of versions) {
       const ver = this.version(v.version).stores(v.stores);
       if (v.upgrade) ver.upgrade(v.upgrade);
