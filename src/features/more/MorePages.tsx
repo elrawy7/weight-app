@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Badge, Button, Card, Group, List, NavLink as MNavLink, NumberInput, SegmentedControl, Select, Stack, Switch, Text, TextInput, ThemeIcon } from '@mantine/core';
-import { IconCalendarStats, IconSettings, IconBarbell, IconDatabase, IconCloudUpload, IconFileImport, IconReportAnalytics, IconDeviceMobile, IconInfoCircle, IconComponents, IconChevronRight, IconShieldCheck, IconCheck } from '@tabler/icons-react';
+import { IconCalendarMonth, IconCalendarStats, IconSettings, IconBarbell, IconDatabase, IconCloudUpload, IconFileImport, IconReportAnalytics, IconDeviceMobile, IconInfoCircle, IconComponents, IconChevronRight, IconShieldCheck, IconCheck } from '@tabler/icons-react';
 import { useDb, useSettings, saveSettings } from '../../app/db';
 import { t, type MsgKey } from '../../i18n';
 import { nowIso } from '../../domain/dates';
@@ -16,6 +16,7 @@ declare const __APP_VERSION__: string;
 declare const __BUILD_TIME__: string;
 
 const items: { to: string; key: MsgKey; icon: typeof IconSettings; group: 'data' | 'app' }[] = [
+  { to: '/plan', key: 'more.plan', icon: IconCalendarMonth, group: 'data' },
   { to: '/programs', key: 'more.programs', icon: IconCalendarStats, group: 'data' },
   { to: '/backup', key: 'more.backup', icon: IconCloudUpload, group: 'data' },
   { to: '/import', key: 'more.import', icon: IconFileImport, group: 'data' },

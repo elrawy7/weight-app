@@ -6,7 +6,7 @@ import { t, type MsgKey } from '../i18n';
 import { UpdatePrompt } from '../components/banners';
 
 const TABS: { to: string; key: MsgKey; icon: typeof IconBooks; match: RegExp }[] = [
-  { to: '/', key: 'nav.today', icon: IconCalendarEvent, match: /^\/$/ },
+  { to: '/', key: 'nav.today', icon: IconCalendarEvent, match: /^\/(plan)?$/ },
   { to: '/history', key: 'nav.history', icon: IconHistory, match: /^\/history/ },
   { to: '/library', key: 'nav.library', icon: IconBooks, match: /^\/library/ },
   { to: '/progress', key: 'nav.progress', icon: IconChartLine, match: /^\/progress/ },

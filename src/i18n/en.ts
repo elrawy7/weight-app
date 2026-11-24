@@ -60,7 +60,7 @@ export const en = {
   'progress.title': 'Progress', 'progress.soon': 'Charts arrive in Phase 3', 'progress.soonBody': 'Strength, volume, PRs and body charts are built after workout logging (Phase 2).',
   'progress.start': 'Start weight', 'progress.goal': 'Goal', 'progress.toGo': 'To go', 'progress.sessions': 'Workouts logged', 'progress.inferred': 'date inferred',
 
-  'more.title': 'More', 'more.programs': 'Programs & schedule', 'more.settings': 'Settings', 'more.equipment': 'Equipment & weight steps', 'more.storage': 'Storage',
+  'more.title': 'More', 'more.programs': 'Programs & schedule', 'more.plan': 'Full plan (4 weeks)', 'more.settings': 'Settings', 'more.equipment': 'Equipment & weight steps', 'more.storage': 'Storage',
   'more.backup': 'Backup & restore', 'more.import': 'Import from Notion', 'more.migration': 'Data migration report', 'more.install': 'Install on iPhone', 'more.about': 'About',
   'more.version': 'Version {v} · built {d}', 'more.privacy': 'No account, no server, no tracking. Your data never leaves this device unless you export it.', 'more.components': 'Component gallery',
   'more.data': 'Data', 'more.app': 'App',
@@ -123,6 +123,15 @@ export const en = {
   'demo.exercise': 'Flat Barbell Bench Press', 'demo.meta': '3 sets · 6–8 reps · rest 120 s', 'demo.statLabel': 'Volume', 'demo.statValue': '4,820 kg', 'demo.statHint': '+6% vs last',
   'demo.confirmTitle': 'Discard changes?', 'demo.confirmBody': 'Your edits will be lost.', 'demo.open': 'Open confirm sheet', 'demo.rest': 'Rest', 'demo.previous': 'Previous 40 × 8',
   'demo.emptyTitle': 'Nothing here yet', 'demo.emptyBody': 'Empty states explain what to do next.',
+
+  'day.prev': 'Previous day', 'day.next': 'Next day', 'day.backToToday': 'Back to today', 'day.fullPlan': 'Full plan',
+  'ql.mark': 'Mark as done', 'ql.title': 'Mark {name} as done', 'ql.minutes': 'Minutes', 'ql.knee': 'Knee pain (0–10)', 'ql.energy': 'Energy (1–5)',
+  'ql.notes': 'Note', 'ql.notesPlaceholder': 'e.g. swam 1 km easy', 'ql.save': 'Save as done', 'ql.done': 'Done', 'ql.edit': 'Edit', 'ql.undo': 'Undo',
+  'ql.undoTitle': 'Undo “done”?', 'ql.undoBody': 'This removes the quick log for this day.', 'ql.saved': 'Marked as done', 'ql.summary': '{min} min · knee {knee}/10 · energy {energy}/5',
+  'ql.noSets': 'Quick log – sets are not recorded (full logging arrives in Phase 2).', 'ql.future': 'Upcoming – you can mark it done on the day.', 'ql.editTitle': 'Edit {name}',
+  'ql.dash': '–', 'ql.update': 'Save changes', 'ql.importedDone': 'Logged in Notion',
+  'plan.title': 'Full plan', 'plan.status.done': 'Done', 'plan.status.today': 'Today', 'plan.status.missed': 'Missed', 'plan.status.upcoming': 'Upcoming',
+  'plan.status.rest': 'Rest', 'plan.status.none': '–', 'plan.progress': '{done} of {total} workouts done', 'plan.noWeeks': 'Next 28 days', 'plan.noProgram': 'No active program',
 
   'ui.decrease': 'Decrease', 'ui.increase': 'Increase', 'ui.weight': 'Weight', 'ui.reps': 'Reps', 'ui.complete': 'Mark set complete', 'ui.setN': 'Set {n}', 'ui.restLeft': '{s} s left',
   'ui.pause': 'Pause', 'ui.skip': 'Skip', 'ui.addTime': '+30 s',

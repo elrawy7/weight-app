@@ -42,6 +42,13 @@ export function HistoryPage() {
               </UnstyledButton>
               <Collapse in={open === s.id}>
                 <Stack gap="xs" mt="sm">
+                  {s.logType === 'quick' && (
+                    <div data-testid="quick-summary">
+                      <Text fz="sm">{t('ql.summary', { min: s.durationMin ?? t('ql.dash'), knee: s.kneePain ?? t('ql.dash'), energy: s.energy ?? t('ql.dash') })}</Text>
+                      {s.notes && <Text fz="sm" c="dimmed">{s.notes}</Text>}
+                      <Text fz="xs" c="dimmed">{t('ql.noSets')}</Text>
+                    </div>
+                  )}
                   {items.map(({ se, ex, sets }) => (
                     <div key={se.id}>
                       <Group gap={6}><Text fw={600} fz="sm">{ex?.name ?? se.exerciseId}</Text>{se.supersetGroup && <Badge size="xs" variant="outline">{t('today.superset', { g: se.supersetGroup })}</Badge>}</Group>

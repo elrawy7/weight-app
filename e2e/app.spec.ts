@@ -196,6 +196,70 @@ test.describe('Notion import and the plan', () => {
   });
 });
 
+test.describe('Mark as done and plan view (QL-01, PROG-06)', () => {
+  test('mark today done, edit, history, browse days, full plan, undo', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-24T10:00:00+03:00'));
+    await fresh(page);
+    const f = await doImport(page);
+    await page.getByTestId('import-confirm').click();
+    await expect(page.getByTestId('import-state')).toHaveText('Imported');
+    await page.goto('./?e2e#/');
+    await expect(page.getByTestId('today-template')).toHaveText('Conditioning');
+    await page.getByTestId('mark-done').click();
+    await page.getByTestId('ql-minutes').fill('40');
+    await page.getByTestId('ql-knee').getByRole('radio', { name: '2' }).click();
+    await page.getByTestId('ql-energy').getByRole('radio', { name: '4' }).click();
+    await page.getByLabel('Note').fill('Swim 1 km easy');
+    await assertHitAreas(page);
+    await page.screenshot({ path: shot('21-mark-done-sheet') });
+    await page.getByTestId('ql-save').click();
+    await expect(page.getByTestId('done-summary')).toHaveText('40 min · knee 2/10 · energy 4/5');
+    await expect(page.getByTestId('mark-done')).toHaveCount(0);
+    // edit
+    await page.getByTestId('ql-edit').click();
+    await page.getByTestId('ql-minutes').fill('45');
+    await page.getByTestId('ql-save').click();
+    await expect(page.getByTestId('done-summary')).toHaveText('45 min · knee 2/10 · energy 4/5');
+    await page.screenshot({ path: shot('22-today-done'), fullPage: true });
+    await assertHitAreas(page);
+    // history shows the quick log
+    await page.getByRole('link', { name: 'History' }).click();
+    await page.getByTestId('history-session').first().getByRole('button').click();
+    await expect(page.getByTestId('quick-summary')).toContainText('45 min · knee 2/10 · energy 4/5');
+    // browse days: tomorrow is upcoming (cannot be marked yet), back to today
+    await page.getByRole('link', { name: 'Today' }).click();
+    await page.getByTestId('day-next').click();
+    await expect(page.getByTestId('today-template')).toHaveText(f.real ? 'Upper B' : 'Upper A');
+    await expect(page.getByTestId('future-note')).toBeVisible();
+    await expect(page.getByTestId('mark-done')).toHaveCount(0);
+    await page.getByTestId('back-today').click();
+    await expect(page.getByTestId('done-card')).toBeVisible();
+    // upcoming rows open that day
+    await page.getByTestId('upcoming-row').nth(4).click(); // 29 Nov
+    await expect(page.getByTestId('today-date')).toContainText('29 November');
+    await page.getByTestId('back-today').click();
+    // full plan
+    await page.getByTestId('open-plan').click();
+    await expect(page.getByTestId('status-2026-11-24')).toHaveText('Done');
+    await expect(page.getByTestId('status-2026-11-21')).toHaveText('Done');
+    await expect(page.getByTestId('status-2026-11-25')).toHaveText('Upcoming');
+    if (f.real) {
+      await expect(page.getByTestId('status-2026-11-23')).toHaveText('Done');
+      await expect(page.getByTestId('plan-progress')).toHaveText('3 of 20 workouts done');
+    }
+    await page.screenshot({ path: shot('23-full-plan'), fullPage: true });
+    await assertHitAreas(page);
+    await assertNamed(page);
+    await page.getByTestId('plan-day').filter({ hasText: 'Tue 1 Dec' }).click();
+    await expect(page.getByTestId('week-phase')).toContainText('Week 2');
+    // undo
+    await page.getByTestId('back-today').click();
+    await page.getByTestId('ql-undo').click();
+    await page.getByTestId('confirm-sheet-confirm').click();
+    await expect(page.getByTestId('mark-done')).toBeVisible();
+  });
+});
+
 test.describe('Library', () => {
   test('LIB-02/03/05/07/08: search, filter, detail, video fallback, custom link, custom exercise, rename', async ({ page }) => {
     await fresh(page, '/library');

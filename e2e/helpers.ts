@@ -31,7 +31,7 @@ export function importFile(): { path: string; real: boolean } {
         { id: 'fixture_prog__conditioning', key: 'conditioning', name: 'Conditioning', focus: 'Swim or box', order: 2, weekday: 'TUE', warmup: [{ order: 1, exerciseId: 'leg_swings', altExerciseIds: [], label: null, prescription: '10 each' }],
           exercises: [{ order: 1, exerciseId: 'swimming', targetSetsByWeek: [1, 1, 1, 1], targetReps: '30 min', restSec: 0, notes: '', supersetGroup: null, role: 'cardio' }] },
       ],
-      schedule: { pattern: { SUN: 'fixture_prog__upper_a', MON: null, TUE: 'fixture_prog__conditioning', WED: null, THU: null, FRI: null, SAT: null }, exceptions: [{ date: '2026-11-21', templateId: 'fixture_prog__upper_a', note: 'Week 1 started on Saturday' }, { date: '2026-11-22', templateId: null, note: 'Skipped' }],
+      schedule: { pattern: { SUN: 'fixture_prog__upper_a', MON: null, TUE: 'fixture_prog__conditioning', WED: 'fixture_prog__upper_a', THU: null, FRI: null, SAT: null }, exceptions: [{ date: '2026-11-21', templateId: 'fixture_prog__upper_a', note: 'Week 1 started on Saturday' }, { date: '2026-11-22', templateId: null, note: 'Skipped' }],
         planned: [{ date: '2026-11-24', templateId: 'fixture_prog__conditioning', week: 1, targetRpe: 'Moderate', notionPageId: 'p24', doneInNotion: false }] },
     },
     sessions: [{ id: 'notion_fx1', localDate: '2026-11-21', dateSource: 'fixture', programId: 'fixture_prog', templateId: 'fixture_prog__upper_a', week: 1, startedAt: null, endedAt: null, durationMin: null, kneePain: null, energy: null, notes: null, notionPageId: 'fx1', lastEditedInNotion: 'x',

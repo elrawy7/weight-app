@@ -76,6 +76,8 @@ export interface WorkoutSession extends Stamped {
   startedAt: ISOTime | null; endedAt: ISOTime | null; pausedMs: number; localDate: ISODate; durationMin?: number | null;
   notes: string; kneePain?: number | null; energy?: number | null; source: 'app' | 'notion_import'; notionPageId?: string;
   dateSource?: string;
+  /** 'quick' = completed with summary only (no sets); 'full' = logged set by set (Phase 2). */
+  logType?: 'quick' | 'full';
 }
 export type SEStatus = 'pending' | 'in_progress' | 'completed' | 'skipped' | 'replaced' | 'not_recorded';
 export interface WorkoutSessionExercise extends Stamped {
