@@ -129,7 +129,7 @@ export function ConfirmSheet({ opened, title, body, confirmLabel, danger, onConf
     <Drawer opened={opened} onClose={onClose} title={<Text fw={700}>{title}</Text>} size="auto" closeButtonProps={{ 'aria-label': t('common.close') }}>
       <Stack pb="md">
         <Text>{body}</Text>
-        <Button size="lg" color={danger ? 'red' : undefined} onClick={onConfirm} loading={loading}>{confirmLabel}</Button>
+        <Button size="lg" color={danger ? 'red' : undefined} onClick={onConfirm} loading={loading} data-testid="confirm-sheet-confirm">{confirmLabel}</Button>
         <Button size="lg" variant="default" onClick={onClose}>{t('common.cancel')}</Button>
       </Stack>
     </Drawer>

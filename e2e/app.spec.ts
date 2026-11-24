@@ -320,7 +320,7 @@ test.describe('Settings, storage, backup', () => {
     await expect(page.getByTestId('restore-preview')).toBeVisible();
     await page.screenshot({ path: shot('17-restore-preview'), fullPage: true });
     await page.getByTestId('restore-go').click();
-    await page.getByRole('button', { name: 'Replace my data' }).last().click();
+    await page.getByTestId('confirm-sheet-confirm').click();
     await expect(page.getByTestId('backup-msg')).toContainText('Restored');
     expect(await page.evaluate(async () => (await (window as any).__weightDb.sets.filter((s: any) => s.weightKg === 999).count()))).toBe(0);
     // corrupted ZIP refused
