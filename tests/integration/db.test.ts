@@ -167,3 +167,26 @@ describe('LIB-06 / LIB-04 library coverage', () => {
     }
   });
 });
+
+describe('Seed v2 video upgrade on an existing install', () => {
+  it('adds verified videos where missing and keeps the user’s own link', async () => {
+    const db = new WeightDB(`t-seedv2-${Math.random()}`);
+    await db.open();
+    await ensureSeed(db);
+    // simulate a v1 install: no videos yet, and the user added their own link for leg press
+    await db.exerciseVideos.where('exerciseId').equals('cable_rope_pushdown').modify({ url: null, status: 'missing', title: undefined, channel: undefined });
+    await db.exerciseVideos.where('exerciseId').equals('leg_press').modify({ url: 'https://www.youtube.com/watch?v=AAAAAAAAAAA', status: 'user' });
+    await db.kv.put({ key: 'seedVersion', value: 1 });
+    await ensureSeed(db);
+    const push = await db.exerciseVideos.where('exerciseId').equals('cable_rope_pushdown').first();
+    expect(push).toMatchObject({ status: 'verified', url: 'https://www.youtube.com/watch?v=FgXQdSOhpL0', channel: 'StrengthLog' });
+    const lp = await db.exerciseVideos.where('exerciseId').equals('leg_press').first();
+    expect(lp).toMatchObject({ status: 'user', url: 'https://www.youtube.com/watch?v=AAAAAAAAAAA' });
+    expect(await db.exerciseVideos.where('exerciseId').equals('leg_press').count()).toBe(1);
+  });
+  it('every exercise of the Nov plan has a verified video (53)', () => {
+    const planIds = ['barbell_bench_press', 'cable_rope_pushdown', 'leg_press', 'goblet_box_squat', 'treadmill_incline_walk', 'swimming', 'boxing_bag', 'band_terminal_knee_extension', 'pec_deck_machine', 'cable_fly_standing', 'chest_supported_row_machine', 'chest_supported_row_db', 'machine_hip_thrust', 'glute_bridge', 'barbell_hip_thrust'];
+    for (const id of planIds) expect(seedExercises.find((e) => e.id === id)?.video, id).toBeTruthy();
+    expect(seedExercises.filter((e) => e.video).length).toBe(53);
+  });
+});

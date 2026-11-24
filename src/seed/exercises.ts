@@ -12,7 +12,8 @@ import { expansionExercises, expansionMuscles } from './expansion';
 const KNEE = ['knee_caution'] as const;
 const KF = ['knee_friendly'] as const;
 
-export const SEED_VERSION = 1;
+/** v2 (24 Nov 2026): verified tutorial videos for every exercise in the Nov plan. */
+export const SEED_VERSION = 2;
 
 const coreExercises: SeedExercise[] = [
   // ───────────────────────── CHEST ─────────────────────────
@@ -29,7 +30,7 @@ const coreExercises: SeedExercise[] = [
     safety: ['Use safety pins or a spotter for heavy sets.', 'Keep wrists stacked over elbows.'],
   },
   {
-    id: 'incline_db_press', name: 'Incline Dumbbell Press', nameAr: 'ضغط الصدر العلوي بالدمبل',
+    id: 'incline_db_press', video: { url: "https://www.youtube.com/watch?v=sh5ZsRpEZCw", title: "How to Do the Incline Dumbbell Bench Press | Perfect Form in 30 Seconds", channel: "All Strength Training", verifiedAt: '2026-11-24' }, name: 'Incline Dumbbell Press', nameAr: 'ضغط الصدر العلوي بالدمبل',
     aliases: ['Incline dumbbell press (30 deg)'], category: 'chest', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'per_hand',
     equipment: 'dumbbell', difficulty: 'beginner', primary: ['upper_chest'], secondary: ['front_delts', 'triceps'],
     defaultRestSec: 75, incrementKg: 2, alternatives: ['incline_smith_press', 'machine_chest_press'],
@@ -41,7 +42,7 @@ const coreExercises: SeedExercise[] = [
     safety: ['Weight is logged per hand.'],
   },
   {
-    id: 'incline_smith_press', name: 'Incline Smith Machine Press', nameAr: 'ضغط الصدر العلوي على جهاز سميث',
+    id: 'incline_smith_press', video: { url: "https://www.youtube.com/watch?v=mpqE-2ypu8Q", title: "Low Incline Smith Machine Press - Set Up & Execution", channel: "Charlie Cuthbert", verifiedAt: '2026-11-24' }, name: 'Incline Smith Machine Press', nameAr: 'ضغط الصدر العلوي على جهاز سميث',
     aliases: [], category: 'chest', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'total',
     equipment: 'smith_machine', difficulty: 'beginner', primary: ['upper_chest'], secondary: ['front_delts', 'triceps'],
     defaultRestSec: 120, incrementKg: 2.5, alternatives: ['incline_db_press'],
@@ -52,7 +53,7 @@ const coreExercises: SeedExercise[] = [
     safety: ['Set the Smith safety stops just below chest height.', 'Log total load = plates + bar (set bar weight in Settings → Equipment).'],
   },
   {
-    id: 'machine_chest_press', name: 'Seated Machine Chest Press', nameAr: 'ضغط الصدر على الجهاز جالساً',
+    id: 'machine_chest_press', video: { url: "https://www.youtube.com/watch?v=GuF3K9ucHwI", title: "Seated Machine Chest Press", channel: "Dan Daly, CSCS", verifiedAt: '2026-11-24' }, name: 'Seated Machine Chest Press', nameAr: 'ضغط الصدر على الجهاز جالساً',
     aliases: ['Machine chest press', 'Seated chest press'], category: 'chest', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['chest'], secondary: ['triceps', 'front_delts'],
     defaultRestSec: 75, incrementKg: 5, alternatives: ['barbell_bench_press'],
@@ -62,7 +63,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Shoulders rolling forward at lockout', 'Seat too high or too low'], safety: ['Pin weights are machine-specific; compare only on the same machine.'],
   },
   {
-    id: 'pec_deck_machine', name: 'Pec Deck Fly (Machine)', nameAr: 'تفتيح الصدر بالجهاز',
+    id: 'pec_deck_machine', video: { url: "https://www.youtube.com/watch?v=hZ0CGRaKwbQ", title: "Pec Deck / Chest Fly: How To", channel: "Hammer Fitness", verifiedAt: '2026-11-24' }, name: 'Pec Deck Fly (Machine)', nameAr: 'تفتيح الصدر بالجهاز',
     aliases: ['Pec deck'], category: 'chest', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['chest'], secondary: ['front_delts'],
     defaultRestSec: 60, incrementKg: 5, alternatives: ['cable_fly_standing'],
@@ -71,7 +72,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Bending and straightening the elbows (turns it into a press)', 'Going past a comfortable stretch'], safety: [],
   },
   {
-    id: 'cable_fly_standing', name: 'Standing Cable Chest Fly', nameAr: 'تفتيح الصدر بالكيبل واقفاً',
+    id: 'cable_fly_standing', video: { url: "https://www.youtube.com/watch?v=pJDbn8Kyx0o", title: "Standing Cable Chest Fly: Demonstration", channel: "StrengthLog", verifiedAt: '2026-11-24' }, name: 'Standing Cable Chest Fly', nameAr: 'تفتيح الصدر بالكيبل واقفاً',
     aliases: ['Cable fly', 'Standing Cable Chest Fly'], category: 'chest', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['chest'], secondary: ['front_delts'],
     defaultRestSec: 60, incrementKg: 2.5, alternatives: ['pec_deck_machine'],
@@ -80,7 +81,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Using the lower back to swing the weight'], safety: ['Weight is per cable stack as shown on the machine.'],
   },
   {
-    id: 'incline_push_up', name: 'Incline Push-Up', nameAr: 'الضغط المائل',
+    id: 'incline_push_up', video: { url: "https://www.youtube.com/watch?v=-9S9gdRwwak", title: "Incline Push ups (Exercise Library)", channel: "Horton Barbell", verifiedAt: '2026-11-24' }, name: 'Incline Push-Up', nameAr: 'الضغط المائل',
     aliases: ['Incline push-ups (hands on bench)'], category: 'chest', mechanic: 'compound', tracking: 'reps', loadMode: 'bodyweight',
     equipment: 'bodyweight', difficulty: 'beginner', primary: ['chest'], secondary: ['triceps', 'front_delts'],
     defaultRestSec: 45, incrementKg: 0, alternatives: [],
@@ -99,7 +100,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Pulling behind the neck', 'Leaning far back and rowing the weight'], safety: [],
   },
   {
-    id: 'lat_pulldown_close_neutral', name: 'Lat Pulldown (Close/Neutral Grip)', nameAr: 'سحب أمامي بقبضة ضيقة/متعادلة',
+    id: 'lat_pulldown_close_neutral', video: { url: "https://www.youtube.com/watch?v=IjoFCmLX7z0", title: "How To Do A Close Grip Lat Pulldown", channel: "PureGym", verifiedAt: '2026-11-24' }, name: 'Lat Pulldown (Close/Neutral Grip)', nameAr: 'سحب أمامي بقبضة ضيقة/متعادلة',
     aliases: ['Lat pulldown, close/neutral grip'], category: 'back', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable_machine', difficulty: 'beginner', primary: ['lats'], secondary: ['biceps', 'mid_back'],
     defaultRestSec: 120, incrementKg: 5, alternatives: ['assisted_pull_up', 'lat_pulldown_wide'],
@@ -115,7 +116,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Kipping or swinging'], safety: ['Logged weight is the assistance: a lower number means harder.'],
   },
   {
-    id: 'chest_supported_row_machine', name: 'Chest-Supported Row (Machine)', nameAr: 'تجديف بالجهاز مع إسناد الصدر',
+    id: 'chest_supported_row_machine', video: { url: "https://www.youtube.com/watch?v=Y8yIJvSEB3U", title: "Chest Supported Machine Row: How To", channel: "Hammer Fitness", verifiedAt: '2026-11-24' }, name: 'Chest-Supported Row (Machine)', nameAr: 'تجديف بالجهاز مع إسناد الصدر',
     aliases: [], category: 'back', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['upper_back'], secondary: ['lats', 'biceps', 'rear_delts'],
     defaultRestSec: 90, incrementKg: 5, alternatives: ['chest_supported_row_db', 'seated_cable_row_wide'],
@@ -123,7 +124,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Lifting the chest off the pad'], safety: ['Chest support removes lower-back strain.'],
   },
   {
-    id: 'chest_supported_row_db', name: 'Chest-Supported Dumbbell Row', nameAr: 'تجديف بالدمبل مع إسناد الصدر',
+    id: 'chest_supported_row_db', video: { url: "https://www.youtube.com/watch?v=h2Xafysr43E", title: "Chest Supported DB Row (Exercise Library)", channel: "Horton Barbell", verifiedAt: '2026-11-24' }, name: 'Chest-Supported Dumbbell Row', nameAr: 'تجديف بالدمبل مع إسناد الصدر',
     aliases: [], category: 'back', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'per_hand',
     equipment: 'dumbbell', difficulty: 'beginner', primary: ['upper_back'], secondary: ['lats', 'biceps', 'rear_delts'],
     defaultRestSec: 90, incrementKg: 2, alternatives: ['chest_supported_row_machine', 'one_arm_db_row'],
@@ -131,7 +132,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Shrugging instead of rowing'], safety: ['Weight is per hand.'],
   },
   {
-    id: 'one_arm_db_row', name: 'One-Arm Dumbbell Row', nameAr: 'تجديف بالدمبل بذراع واحدة',
+    id: 'one_arm_db_row', video: { url: "https://www.youtube.com/watch?v=fURsHPHgssI", title: "Single-Arm Dumbbell Row on a Bench: Perfect Form Tutorial", channel: "The Healthy Habit", verifiedAt: '2026-11-24' }, name: 'One-Arm Dumbbell Row', nameAr: 'تجديف بالدمبل بذراع واحدة',
     aliases: [], category: 'back', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'per_hand',
     equipment: 'dumbbell', difficulty: 'beginner', primary: ['lats'], secondary: ['upper_back', 'biceps'],
     defaultRestSec: 75, incrementKg: 2, alternatives: ['chest_supported_row_db'],
@@ -139,7 +140,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Rotating the torso to lift the weight'], safety: ['Reps are logged per side.'],
   },
   {
-    id: 'seated_cable_row_wide', name: 'Seated Cable Row (Wide Grip)', nameAr: 'تجديف بالكيبل جالساً بقبضة واسعة',
+    id: 'seated_cable_row_wide', video: { url: "https://www.youtube.com/watch?v=y7h823PdWIY", title: "How To: Wide Grip Seated Cable Row", channel: "Live Lean TV Daily Exercises", verifiedAt: '2026-11-24' }, name: 'Seated Cable Row (Wide Grip)', nameAr: 'تجديف بالكيبل جالساً بقبضة واسعة',
     aliases: ['Seated cable row (wide grip)'], category: 'back', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['upper_back'], secondary: ['lats', 'rear_delts', 'biceps'],
     defaultRestSec: 75, incrementKg: 5, alternatives: ['chest_supported_row_machine'],
@@ -147,7 +148,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Swinging the torso back and forth'], safety: [],
   },
   {
-    id: 'straight_arm_pulldown', name: 'Straight-Arm Cable Pulldown', nameAr: 'سحب الكيبل بذراعين مستقيمتين',
+    id: 'straight_arm_pulldown', video: { url: "https://www.youtube.com/watch?v=70Ajji0V9vk", title: "Straight Arm Lat Pulldown (Exercise Library)", channel: "Horton Barbell", verifiedAt: '2026-11-24' }, name: 'Straight-Arm Cable Pulldown', nameAr: 'سحب الكيبل بذراعين مستقيمتين',
     aliases: [], category: 'back', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['lats'], secondary: ['triceps'],
     defaultRestSec: 60, incrementKg: 2.5, alternatives: [],
@@ -155,7 +156,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Bending the elbows (turns into a pushdown)'], safety: [],
   },
   {
-    id: 'db_shrug', name: 'Dumbbell Shrug', nameAr: 'رفع الأكتاف بالدمبل (الترابيس)',
+    id: 'db_shrug', video: { url: "https://www.youtube.com/watch?v=RLHxN6hq8NA", title: "How to Do Dumbbell Shrugs | Perfect Form in 30 Seconds", channel: "All Strength Training", verifiedAt: '2026-11-24' }, name: 'Dumbbell Shrug', nameAr: 'رفع الأكتاف بالدمبل (الترابيس)',
     aliases: [], category: 'back', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'per_hand',
     equipment: 'dumbbell', difficulty: 'beginner', primary: ['traps'], secondary: ['forearms'],
     defaultRestSec: 60, incrementKg: 2, alternatives: [],
@@ -163,7 +164,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Rolling the shoulders', 'Bending the elbows'], safety: ['Weight is per hand.'],
   },
   {
-    id: 'back_extension_45', name: '45° Back Extension', nameAr: 'تمديد أسفل الظهر على جهاز 45 درجة',
+    id: 'back_extension_45', video: { url: "https://www.youtube.com/watch?v=7Z-FQ_yA7uM", title: "45 Degree Back Extension", channel: "Erik Rokisky | Founder of SquatWedgiez", verifiedAt: '2026-11-24' }, name: '45° Back Extension', nameAr: 'تمديد أسفل الظهر على جهاز 45 درجة',
     aliases: ['45-degree back extension'], category: 'back', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'bodyweight',
     equipment: 'bench', difficulty: 'beginner', primary: ['lower_back'], secondary: ['glutes', 'hamstrings'],
     defaultRestSec: 60, incrementKg: 2.5, alternatives: [],
@@ -172,7 +173,7 @@ const coreExercises: SeedExercise[] = [
   },
   // ───────────────────────── SHOULDERS ─────────────────────────
   {
-    id: 'seated_db_shoulder_press', name: 'Seated Dumbbell Shoulder Press', nameAr: 'ضغط الكتف بالدمبل جالساً',
+    id: 'seated_db_shoulder_press', video: { url: "https://www.youtube.com/watch?v=WKEl69bIGus", title: "How to Do the Seated Dumbbell Shoulder Press | Perfect Form in 30 Seconds", channel: "All Strength Training", verifiedAt: '2026-11-24' }, name: 'Seated Dumbbell Shoulder Press', nameAr: 'ضغط الكتف بالدمبل جالساً',
     aliases: ['Seated dumbbell shoulder press', 'Seated DB shoulder press'], category: 'shoulders', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'per_hand',
     equipment: 'dumbbell', difficulty: 'beginner', primary: ['front_delts'], secondary: ['triceps', 'side_delts'],
     defaultRestSec: 90, incrementKg: 2, alternatives: [],
@@ -180,7 +181,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Arching the lower back off the pad'], safety: ['Weight is per hand.'],
   },
   {
-    id: 'cable_lateral_raise', name: 'Cable Lateral Raise', nameAr: 'رفرفة جانبية بالكيبل',
+    id: 'cable_lateral_raise', video: { url: "https://www.youtube.com/watch?v=qghfvzcoS2I", title: "Cable Lateral Raise (Exercise Library)", channel: "Horton Barbell", verifiedAt: '2026-11-24' }, name: 'Cable Lateral Raise', nameAr: 'رفرفة جانبية بالكيبل',
     aliases: ['Cable lateral raise'], category: 'shoulders', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['side_delts'], secondary: [],
     defaultRestSec: 45, incrementKg: 1.25, alternatives: ['db_lateral_raise'],
@@ -205,7 +206,7 @@ const coreExercises: SeedExercise[] = [
   },
   // ───────────────────────── ARMS ─────────────────────────
   {
-    id: 'db_hammer_curl', name: 'Dumbbell Hammer Curl', nameAr: 'تمرين المطرقة بالدمبل',
+    id: 'db_hammer_curl', video: { url: "https://www.youtube.com/watch?v=CFBZ4jN1CMI", title: "How to do a Dumbbell Hammer Curl", channel: "National Academy of Sports Medicine (NASM)", verifiedAt: '2026-11-24' }, name: 'Dumbbell Hammer Curl', nameAr: 'تمرين المطرقة بالدمبل',
     aliases: ['Hammer curls'], category: 'biceps', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'per_hand',
     equipment: 'dumbbell', difficulty: 'beginner', primary: ['biceps'], secondary: ['brachialis', 'forearms'],
     defaultRestSec: 60, incrementKg: 1, alternatives: ['ez_bar_curl'],
@@ -213,7 +214,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Swinging the body'], safety: ['Weight is per hand.'],
   },
   {
-    id: 'ez_bar_curl', name: 'EZ-Bar Curl', nameAr: 'تمرين البايسبس بالبار المتعرج',
+    id: 'ez_bar_curl', video: { url: "https://www.youtube.com/watch?v=PpLPrakn0eQ", title: "EZ Bar Curls (Exercise Library)", channel: "Horton Barbell", verifiedAt: '2026-11-24' }, name: 'EZ-Bar Curl', nameAr: 'تمرين البايسبس بالبار المتعرج',
     aliases: [], category: 'biceps', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'total',
     equipment: 'ez_bar', difficulty: 'beginner', primary: ['biceps'], secondary: ['forearms'],
     defaultRestSec: 60, incrementKg: 2.5, alternatives: ['db_hammer_curl'],
@@ -221,7 +222,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Leaning back', 'Half reps'], safety: ['Log total weight including the bar.'],
   },
   {
-    id: 'cable_rope_pushdown', name: 'Cable Rope Triceps Pushdown', nameAr: 'دفع الترايسبس للأسفل بالحبل',
+    id: 'cable_rope_pushdown', video: { url: "https://www.youtube.com/watch?v=FgXQdSOhpL0", title: "Triceps Pushdown With Rope: Demonstration", channel: "StrengthLog", verifiedAt: '2026-11-24' }, name: 'Cable Rope Triceps Pushdown', nameAr: 'دفع الترايسبس للأسفل بالحبل',
     aliases: ['Rope pushdown', 'Triceps rope pushdown', 'Rope pressdown'], category: 'triceps', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['triceps'], secondary: [],
     defaultRestSec: 60, incrementKg: 2.5, alternatives: ['overhead_cable_triceps_extension'],
@@ -229,7 +230,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Elbows drifting forward', 'Leaning over the weight'], safety: [],
   },
   {
-    id: 'overhead_cable_triceps_extension', name: 'Overhead Cable Triceps Extension', nameAr: 'تمديد الترايسبس فوق الرأس بالكيبل',
+    id: 'overhead_cable_triceps_extension', video: { url: "https://www.youtube.com/watch?v=NJScewjG7AI", title: "How To Do A Standing Low Pulley Overhead Cable Triceps Extension With Rope | Exercise Demo Video", channel: "Live Lean TV Daily Exercises", verifiedAt: '2026-11-24' }, name: 'Overhead Cable Triceps Extension', nameAr: 'تمديد الترايسبس فوق الرأس بالكيبل',
     aliases: ['Rope overhead triceps extension'], category: 'triceps', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['triceps'], secondary: [],
     defaultRestSec: 60, incrementKg: 2.5, alternatives: ['cable_rope_pushdown'],
@@ -248,7 +249,7 @@ const coreExercises: SeedExercise[] = [
     safety: ['Box height sets the depth – raise it if the knee complains.', 'Log the single dumbbell weight.'],
   },
   {
-    id: 'leg_press', name: 'Leg Press', nameAr: 'ضغط الأرجل بالجهاز',
+    id: 'leg_press', video: { url: "https://www.youtube.com/watch?v=cDGOn-yfKJA", title: "How to do a Leg Press | Proper Form & Technique | NASM", channel: "National Academy of Sports Medicine (NASM)", verifiedAt: '2026-11-24' }, name: 'Leg Press', nameAr: 'ضغط الأرجل بالجهاز',
     aliases: ['Leg press (feet high & wide)'], category: 'quadriceps', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'total',
     equipment: 'machine', difficulty: 'beginner', primary: ['quads'], secondary: ['glutes', 'hamstrings'], tags: [...KNEE, ...KF],
     defaultRestSec: 120, incrementKg: 5, alternatives: ['goblet_box_squat'],
@@ -257,7 +258,7 @@ const coreExercises: SeedExercise[] = [
     safety: ['High foot placement reduces knee stress.', 'Plate-loaded vs stack machines are not comparable.'],
   },
   {
-    id: 'leg_extension', name: 'Leg Extension', nameAr: 'تمديد الرجل بالجهاز',
+    id: 'leg_extension', video: { url: "https://www.youtube.com/watch?v=85ENqrGFXJM", title: "A FIX for Leg Extensions - How to do it without knee pain and build your quads", channel: "Nick Nilsson - the Mad Scientist of Muscle", verifiedAt: '2026-11-24' }, name: 'Leg Extension', nameAr: 'تمديد الرجل بالجهاز',
     aliases: ['Leg extension (light, partial range)', 'Leg extensions (partial ROM)'], category: 'quadriceps', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['quads'], secondary: [], tags: [...KNEE],
     defaultRestSec: 45, incrementKg: 5, alternatives: ['band_terminal_knee_extension'],
@@ -265,7 +266,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Swinging the weight', 'Going heavy'], safety: ['Light load and partial range for a sensitive knee; skip if pain > 3/10.'],
   },
   {
-    id: 'low_step_up', name: 'Step-Up (Low Box)', nameAr: 'الصعود على صندوق منخفض',
+    id: 'low_step_up', video: { url: "https://www.youtube.com/watch?v=otjVTHFMbcM", title: "How to Correct Your Box Step Ups | Tim Keeley | Physio REHAB", channel: "Physio REHAB", verifiedAt: '2026-11-24' }, name: 'Step-Up (Low Box)', nameAr: 'الصعود على صندوق منخفض',
     aliases: ['Low step-up (20-30 cm box)'], category: 'quadriceps', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'per_hand',
     equipment: 'bodyweight', difficulty: 'beginner', primary: ['quads'], secondary: ['glutes'], tags: [...KNEE],
     defaultRestSec: 75, incrementKg: 2, alternatives: ['cable_pull_through'],
@@ -282,7 +283,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Rounding the back', 'Squatting the weight down'], safety: ['Weight is per hand.'],
   },
   {
-    id: 'lying_leg_curl', name: 'Lying Leg Curl', nameAr: 'ثني الرجل مستلقياً (جهاز)',
+    id: 'lying_leg_curl', video: { url: "https://www.youtube.com/watch?v=kLJlqfn_bDM", title: "Lying Leg Curl: How To", channel: "Hammer Fitness", verifiedAt: '2026-11-24' }, name: 'Lying Leg Curl', nameAr: 'ثني الرجل مستلقياً (جهاز)',
     aliases: ['Lying leg curl', 'Seated or lying leg curl'], category: 'hamstrings', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['hamstrings'], secondary: ['calves'], tags: [...KF],
     defaultRestSec: 60, incrementKg: 5, alternatives: ['seated_leg_curl'],
@@ -298,7 +299,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Partial reps'], safety: [],
   },
   {
-    id: 'barbell_hip_thrust', name: 'Barbell Hip Thrust', nameAr: 'دفع الورك بالبار',
+    id: 'barbell_hip_thrust', video: { url: "https://www.youtube.com/watch?v=qFxTNOiQIAU", title: "HOW TO: Do Hip Thrusts 🍑💥 Best Exercise For Glutes w/ Bret Contreras | Hip Thrust Exercise Demo", channel: "Marie Wold", verifiedAt: '2026-11-24' }, name: 'Barbell Hip Thrust', nameAr: 'دفع الورك بالبار',
     aliases: [], category: 'glutes', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'total',
     equipment: 'barbell', difficulty: 'intermediate', primary: ['glutes'], secondary: ['hamstrings'], tags: [...KF],
     defaultRestSec: 90, incrementKg: 5, alternatives: ['machine_hip_thrust', 'glute_bridge'],
@@ -306,7 +307,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Arching the lower back at the top'], safety: ['Use a bar pad.'],
   },
   {
-    id: 'machine_hip_thrust', name: 'Machine Hip Thrust', nameAr: 'دفع الورك بالجهاز',
+    id: 'machine_hip_thrust', video: { url: "https://www.youtube.com/watch?v=4ksQt-cEfng", title: "Machine Hip Thrust Tutorial", channel: "Andrew Heming", verifiedAt: '2026-11-24' }, name: 'Machine Hip Thrust', nameAr: 'دفع الورك بالجهاز',
     aliases: [], category: 'glutes', mechanic: 'compound', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['glutes'], secondary: ['hamstrings'], tags: [...KF],
     defaultRestSec: 75, incrementKg: 5, alternatives: ['barbell_hip_thrust', 'glute_bridge'],
@@ -314,7 +315,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Pushing through the toes'], safety: [],
   },
   {
-    id: 'hip_abduction_machine', name: 'Hip Abduction Machine', nameAr: 'جهاز إبعاد الورك',
+    id: 'hip_abduction_machine', video: { url: "https://www.youtube.com/watch?v=5O_Y9l__iao", title: "Seated Hip Abduction Machine: How To", channel: "Hammer Fitness", verifiedAt: '2026-11-24' }, name: 'Hip Abduction Machine', nameAr: 'جهاز إبعاد الورك',
     aliases: ['Machine hip abduction', 'Seated hip abduction'], category: 'glutes', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['glute_med'], secondary: ['glutes'], tags: [...KF],
     defaultRestSec: 45, incrementKg: 5, alternatives: ['mini_band_side_step'],
@@ -322,7 +323,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Bouncing the weight'], safety: ['Strong glute med supports knee tracking.'],
   },
   {
-    id: 'hip_adduction_machine', name: 'Hip Adduction Machine', nameAr: 'جهاز تقريب الورك',
+    id: 'hip_adduction_machine', video: { url: "https://www.youtube.com/watch?v=ScqpbvOZWe8", title: "Hip Adduction Machine: How To", channel: "Hammer Fitness", verifiedAt: '2026-11-24' }, name: 'Hip Adduction Machine', nameAr: 'جهاز تقريب الورك',
     aliases: ['Machine hip adduction'], category: 'glutes', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['adductors'], secondary: [], tags: [...KF],
     defaultRestSec: 45, incrementKg: 5, alternatives: [],
@@ -338,7 +339,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Pulling with the arms'], safety: [],
   },
   {
-    id: 'standing_calf_raise', name: 'Standing Calf Raise', nameAr: 'رفع السمانة واقفاً',
+    id: 'standing_calf_raise', video: { url: "https://www.youtube.com/watch?v=4HQ8Am9IuME", title: "Standing Calf Raise: Stop Bouncing, Start Growing", channel: "Mike | J2FIT Strength & Conditioning", verifiedAt: '2026-11-24' }, name: 'Standing Calf Raise', nameAr: 'رفع السمانة واقفاً',
     aliases: [], category: 'calves', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['calves'], secondary: [],
     defaultRestSec: 45, incrementKg: 5, alternatives: ['seated_calf_raise'],
@@ -346,7 +347,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Bouncing at the bottom'], safety: [],
   },
   {
-    id: 'seated_calf_raise', name: 'Seated Calf Raise', nameAr: 'رفع السمانة جالساً',
+    id: 'seated_calf_raise', video: { url: "https://www.youtube.com/watch?v=arvYK3YwaIc", title: "How to Use the Seated Calf Raise Machine", channel: "White Lion Strong-Gym", verifiedAt: '2026-11-24' }, name: 'Seated Calf Raise', nameAr: 'رفع السمانة جالساً',
     aliases: [], category: 'calves', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'machine', difficulty: 'beginner', primary: ['calves'], secondary: [],
     defaultRestSec: 45, incrementKg: 5, alternatives: ['standing_calf_raise'],
@@ -355,7 +356,7 @@ const coreExercises: SeedExercise[] = [
   },
   // ───────────────────────── CORE ─────────────────────────
   {
-    id: 'cable_crunch', name: 'Cable Crunch', nameAr: 'طحن البطن بالكيبل',
+    id: 'cable_crunch', video: { url: "https://www.youtube.com/watch?v=0KEP6A1deBE", title: "Exercise Tutorial: Kneeling Cable Crunch", channel: "Travis Tarrant", verifiedAt: '2026-11-24' }, name: 'Cable Crunch', nameAr: 'طحن البطن بالكيبل',
     aliases: [], category: 'abdominals', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['abs'], secondary: [],
     defaultRestSec: 45, incrementKg: 2.5, alternatives: ['dead_bug'],
@@ -363,7 +364,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Sitting back on the heels to move the weight'], safety: [],
   },
   {
-    id: 'dead_bug', name: 'Dead Bug', nameAr: 'تمرين الحشرة الميتة',
+    id: 'dead_bug', video: { url: "https://www.youtube.com/watch?v=bxn9FBrt4-A", title: "How to do a Dead Bug | Proper Form & Technique | NASM", channel: "National Academy of Sports Medicine (NASM)", verifiedAt: '2026-11-24' }, name: 'Dead Bug', nameAr: 'تمرين الحشرة الميتة',
     aliases: [], category: 'abdominals', mechanic: 'isolation', tracking: 'reps_per_side', loadMode: 'bodyweight',
     equipment: 'bodyweight', difficulty: 'beginner', primary: ['abs'], secondary: ['hip_flexors'],
     defaultRestSec: 45, incrementKg: 0, alternatives: ['plank'],
@@ -371,7 +372,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Lower back lifting off the floor'], safety: [],
   },
   {
-    id: 'pallof_press', name: 'Pallof Press', nameAr: 'ضغط بالوف (مقاومة الدوران)',
+    id: 'pallof_press', video: { url: "https://www.youtube.com/watch?v=HXrLaqNIkTs", title: "How To Do A Pallof Press", channel: "PureGym", verifiedAt: '2026-11-24' }, name: 'Pallof Press', nameAr: 'ضغط بالوف (مقاومة الدوران)',
     aliases: [], category: 'abdominals', mechanic: 'isolation', tracking: 'reps_per_side', loadMode: 'stack',
     equipment: 'cable', difficulty: 'beginner', primary: ['obliques'], secondary: ['abs'],
     defaultRestSec: 45, incrementKg: 2.5, alternatives: [],
@@ -379,7 +380,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Letting the torso rotate'], safety: [],
   },
   {
-    id: 'plank', name: 'Plank', nameAr: 'البلانك',
+    id: 'plank', video: { url: "https://www.youtube.com/watch?v=mwlp75MS6Rg", title: "How to do a Plank | Proper Form & Technique | NASM", channel: "National Academy of Sports Medicine (NASM)", verifiedAt: '2026-11-24' }, name: 'Plank', nameAr: 'البلانك',
     aliases: ['Front plank'], category: 'abdominals', mechanic: 'isolation', tracking: 'duration', loadMode: 'bodyweight',
     equipment: 'bodyweight', difficulty: 'beginner', primary: ['abs'], secondary: ['front_delts'],
     defaultRestSec: 45, incrementKg: 0, alternatives: ['dead_bug'],
@@ -387,7 +388,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Hips sagging or piking'], safety: [],
   },
   {
-    id: 'side_plank', name: 'Side Plank', nameAr: 'البلانك الجانبي',
+    id: 'side_plank', video: { url: "https://www.youtube.com/watch?v=44ND4bOB-T0", title: "How to do a Side Plank | Proper Form & Technique | NASM", channel: "National Academy of Sports Medicine (NASM)", verifiedAt: '2026-11-24' }, name: 'Side Plank', nameAr: 'البلانك الجانبي',
     aliases: [], category: 'abdominals', mechanic: 'isolation', tracking: 'duration', loadMode: 'bodyweight',
     equipment: 'bodyweight', difficulty: 'beginner', primary: ['obliques'], secondary: ['abs'],
     defaultRestSec: 45, incrementKg: 0, alternatives: [],
@@ -396,7 +397,7 @@ const coreExercises: SeedExercise[] = [
   },
   // ───────────────────────── CARDIO ─────────────────────────
   {
-    id: 'treadmill_incline_walk', name: 'Treadmill Incline Walk', nameAr: 'المشي على السير بميل',
+    id: 'treadmill_incline_walk', video: { url: "https://www.youtube.com/watch?v=NAsObfFJXvE", title: "How To: Incline Treadmill Walk (12-3-30 Workout)", channel: "Live Lean TV Daily Exercises", verifiedAt: '2026-11-24' }, name: 'Treadmill Incline Walk', nameAr: 'المشي على السير بميل',
     aliases: ['Incline walk'], category: 'cardio', mechanic: 'cardio', tracking: 'duration_distance', loadMode: 'none',
     equipment: 'treadmill', difficulty: 'beginner', primary: ['cardio'], secondary: [], tags: [...KF],
     defaultRestSec: 0, incrementKg: 0, alternatives: ['stationary_bike', 'walking'],
@@ -404,7 +405,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Holding the handrails'], safety: ['Walking replaces running while the knee is sensitive.'],
   },
   {
-    id: 'stationary_bike', name: 'Stationary Bike', nameAr: 'الدراجة الثابتة',
+    id: 'stationary_bike', video: { url: "https://www.youtube.com/watch?v=etsnAlOLrIA", title: "How to Adjust Your Bike to Save Your Knees (stationary or outdoor bike) - Episode #9", channel: "Healthy Knees for You with Robin Robertson", verifiedAt: '2026-11-24' }, name: 'Stationary Bike', nameAr: 'الدراجة الثابتة',
     aliases: ['Bike', 'Cycling'], category: 'cardio', mechanic: 'cardio', tracking: 'duration_distance', loadMode: 'none',
     equipment: 'bike', difficulty: 'beginner', primary: ['cardio'], secondary: [], tags: [...KF],
     defaultRestSec: 0, incrementKg: 0, alternatives: ['treadmill_incline_walk'],
@@ -412,7 +413,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Seat too low (stresses the knee)'], safety: [],
   },
   {
-    id: 'swimming', name: 'Swimming', nameAr: 'السباحة',
+    id: 'swimming', video: { url: "https://www.youtube.com/watch?v=AQy_c30lNjI", title: "How To Swim Freestyle | Technique For Front Crawl Swimming", channel: "Global Triathlon Network", verifiedAt: '2026-11-24' }, name: 'Swimming', nameAr: 'السباحة',
     aliases: [], category: 'cardio', mechanic: 'cardio', tracking: 'duration_distance', loadMode: 'none',
     equipment: 'pool', difficulty: 'beginner', primary: ['cardio'], secondary: [], tags: [...KF],
     defaultRestSec: 30, incrementKg: 0, alternatives: ['boxing_bag'],
@@ -420,7 +421,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: [], safety: ['Avoid the breaststroke kick if it irritates the knee.'],
   },
   {
-    id: 'boxing_bag', name: 'Boxing (Bag / Pads)', nameAr: 'الملاكمة (كيس/أكفّ)',
+    id: 'boxing_bag', video: { url: "https://www.youtube.com/watch?v=7EHSN5T-ZQE", title: "How to Punch the Heavy Bag for Beginners | Part 1", channel: "Tony Jeffries", verifiedAt: '2026-11-24' }, name: 'Boxing (Bag / Pads)', nameAr: 'الملاكمة (كيس/أكفّ)',
     aliases: ['Boxing'], category: 'cardio', mechanic: 'cardio', tracking: 'rounds', loadMode: 'none',
     equipment: 'bag', difficulty: 'beginner', primary: ['cardio'], secondary: [],
     defaultRestSec: 60, incrementKg: 0, alternatives: ['swimming'],
@@ -436,7 +437,7 @@ const coreExercises: SeedExercise[] = [
   },
   // ───────────────────────── WARM-UP / MOBILITY ─────────────────────────
   {
-    id: 'band_terminal_knee_extension', name: 'Banded Terminal Knee Extension', nameAr: 'تمديد الركبة النهائي بالمطاط',
+    id: 'band_terminal_knee_extension', video: { url: "https://www.youtube.com/watch?v=xdKm8PSX438", title: "Banded Terminal Knee Extension", channel: "E3 Rehab Exercise Library", verifiedAt: '2026-11-24' }, name: 'Banded Terminal Knee Extension', nameAr: 'تمديد الركبة النهائي بالمطاط',
     aliases: ['TKE'], category: 'mobility', mechanic: 'isolation', tracking: 'reps_per_side', loadMode: 'band',
     equipment: 'band', difficulty: 'beginner', primary: ['quads'], secondary: [], tags: [...KF],
     defaultRestSec: 0, incrementKg: 0, alternatives: [],
@@ -444,7 +445,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Moving the hip instead of the knee'], safety: [],
   },
   {
-    id: 'glute_bridge', name: 'Glute Bridge', nameAr: 'جسر الألوية',
+    id: 'glute_bridge', video: { url: "https://www.youtube.com/watch?v=bcnun1NjZ1E", title: "Glute Bridge: How to", channel: "Hammer Fitness", verifiedAt: '2026-11-24' }, name: 'Glute Bridge', nameAr: 'جسر الألوية',
     aliases: ['Glute bridges'], category: 'glutes', mechanic: 'isolation', tracking: 'weight_reps', loadMode: 'total',
     equipment: 'bodyweight', difficulty: 'beginner', primary: ['glutes'], secondary: ['hamstrings'], tags: [...KF],
     defaultRestSec: 45, incrementKg: 5, alternatives: ['barbell_hip_thrust', 'machine_hip_thrust'],
@@ -452,7 +453,7 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Arching the lower back'], safety: ['Bodyweight = log 0 kg.'],
   },
   {
-    id: 'mini_band_side_step', name: 'Mini-Band Side Step', nameAr: 'الخطوات الجانبية بالمطاط',
+    id: 'mini_band_side_step', video: { url: "https://www.youtube.com/watch?v=jO4qYEL6y_8", title: "Lateral Mini Band Walk", channel: "Prototype Training Systems", verifiedAt: '2026-11-24' }, name: 'Mini-Band Side Step', nameAr: 'الخطوات الجانبية بالمطاط',
     aliases: [], category: 'mobility', mechanic: 'isolation', tracking: 'reps_per_side', loadMode: 'band',
     equipment: 'band', difficulty: 'beginner', primary: ['glute_med'], secondary: [], tags: [...KF],
     defaultRestSec: 0, incrementKg: 0, alternatives: ['hip_abduction_machine'],
@@ -460,41 +461,41 @@ const coreExercises: SeedExercise[] = [
     mistakes: ['Knees caving in'], safety: [],
   },
   {
-    id: 'leg_swings', name: 'Leg Swings', nameAr: 'تأرجح الساقين',
+    id: 'leg_swings', video: { url: "https://www.youtube.com/watch?v=7QLR1qTAD3Y", title: "Linear Leg Swings | Dynamic Pre-Workout Warm-Up", channel: "Andrejs Birjukovs | The Resilient Athlete", verifiedAt: '2026-11-24' }, name: 'Leg Swings', nameAr: 'تأرجح الساقين',
     aliases: [], category: 'mobility', mechanic: 'mobility', tracking: 'reps_per_side', loadMode: 'none',
     equipment: 'none', difficulty: 'beginner', primary: ['hip_flexors'], secondary: [], tags: [...KF],
     defaultRestSec: 0, incrementKg: 0, alternatives: [],
     instructions: ['Hold a support. Swing one leg front-to-back, then side-to-side, gradually increasing range.'], mistakes: [], safety: [],
   },
   {
-    id: 'bodyweight_box_squat', name: 'Bodyweight Box Squat', nameAr: 'سكوات على صندوق بوزن الجسم',
+    id: 'bodyweight_box_squat', video: { url: "https://www.youtube.com/watch?v=xM1grfCwGoY", title: "Sit-to-Stand, Box Squats, and Knee Pain", channel: "Physiofitness Physical Therapy", verifiedAt: '2026-11-24' }, name: 'Bodyweight Box Squat', nameAr: 'سكوات على صندوق بوزن الجسم',
     aliases: [], category: 'mobility', mechanic: 'compound', tracking: 'reps', loadMode: 'bodyweight',
     equipment: 'bodyweight', difficulty: 'beginner', primary: ['quads'], secondary: ['glutes'], tags: [...KNEE],
     defaultRestSec: 0, incrementKg: 0, alternatives: [],
     instructions: ['Sit back to a high box and stand up, checking for a pain-free depth before the loaded sets.'], mistakes: [], safety: [],
   },
   {
-    id: 'arm_circles', name: 'Arm Circles', nameAr: 'دوائر الذراعين',
+    id: 'arm_circles', video: { url: "https://www.youtube.com/watch?v=X9qVOhj04fk", title: "How To Do STANDING REVERSE ARM CIRCLES | Exercise Demonstration Video and Guide", channel: "Live Lean TV Daily Exercises", verifiedAt: '2026-11-24' }, name: 'Arm Circles', nameAr: 'دوائر الذراعين',
     aliases: [], category: 'mobility', mechanic: 'mobility', tracking: 'reps', loadMode: 'none',
     equipment: 'none', difficulty: 'beginner', primary: ['side_delts'], secondary: [], defaultRestSec: 0, incrementKg: 0, alternatives: [],
     instructions: ['Small to large circles forward, then backward.'], mistakes: [], safety: [],
   },
   {
-    id: 'band_pull_apart', name: 'Band Pull-Apart', nameAr: 'فتح المطاط للخلف',
+    id: 'band_pull_apart', video: { url: "https://www.youtube.com/watch?v=B5pg51YcXiU", title: "Band Pull-Aparts (Exercise Library)", channel: "Horton Barbell", verifiedAt: '2026-11-24' }, name: 'Band Pull-Apart', nameAr: 'فتح المطاط للخلف',
     aliases: [], category: 'mobility', mechanic: 'isolation', tracking: 'reps', loadMode: 'band',
     equipment: 'band', difficulty: 'beginner', primary: ['rear_delts'], secondary: ['traps'], defaultRestSec: 0, incrementKg: 0, alternatives: ['cable_face_pull'],
     instructions: ['Hold a band at shoulder width, arms straight in front.', 'Pull the band apart to the chest, squeezing the shoulder blades.'],
     mistakes: ['Shrugging'], safety: [],
   },
   {
-    id: 'band_pass_through', name: 'Band Pass-Through', nameAr: 'تمرير المطاط فوق الرأس',
+    id: 'band_pass_through', video: { url: "https://www.youtube.com/watch?v=riVxa9By-pM", title: "How To Do Band Dislocates / Pass-Throughs (Shoulder Mobility)", channel: "66 Days Fitness Coaching", verifiedAt: '2026-11-24' }, name: 'Band Pass-Through', nameAr: 'تمرير المطاط فوق الرأس',
     aliases: [], category: 'mobility', mechanic: 'mobility', tracking: 'reps', loadMode: 'band',
     equipment: 'band', difficulty: 'beginner', primary: ['rotator_cuff'], secondary: [], defaultRestSec: 0, incrementKg: 0, alternatives: [],
     instructions: ['Wide grip on a band, arms straight.', 'Raise the band over the head and behind the back, then return.'],
     mistakes: ['Grip too narrow'], safety: [],
   },
   {
-    id: 'cat_cow', name: 'Cat-Cow', nameAr: 'تمرين القطة والبقرة',
+    id: 'cat_cow', video: { url: "https://www.youtube.com/watch?v=Fa4ZMS5M7xA", title: "How to Do Cat-Cow Stretch With Micki Duran | Yoga52", channel: "BODi", verifiedAt: '2026-11-24' }, name: 'Cat-Cow', nameAr: 'تمرين القطة والبقرة',
     aliases: [], category: 'mobility', mechanic: 'mobility', tracking: 'reps', loadMode: 'none',
     equipment: 'none', difficulty: 'beginner', primary: ['lower_back'], secondary: [], defaultRestSec: 0, incrementKg: 0, alternatives: [],
     instructions: ['On hands and knees, round the back up (cat), then let the belly drop and look up (cow).'], mistakes: [], safety: [],

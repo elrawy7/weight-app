@@ -289,8 +289,9 @@ test.describe('Library', () => {
     await assertHitAreas(page);
     await assertNamed(page);
     // LIB-05 AC1: no verified link → search fallback
-    await page.goto('./?e2e#/library/leg_press');
-    await expect(page.getByTestId('video-search')).toHaveAttribute('href', 'https://www.youtube.com/results?search_query=Leg%20Press%20form');
+    await page.goto('./?e2e#/library/push_up');
+    await expect(page.getByTestId('video-search')).toHaveAttribute('href', 'https://www.youtube.com/results?search_query=Push-Up%20form');
+    await page.goto('./?e2e#/library/goblet_box_squat');
     // LIB-05 AC2 user link
     await page.getByRole('button', { name: 'Add your YouTube link' }).click();
     await page.getByTestId('video-input').fill('https://example.com/x');

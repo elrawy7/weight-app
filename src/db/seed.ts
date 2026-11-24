@@ -51,6 +51,13 @@ export async function ensureSeed(db: WeightDB): Promise<{ added: number; refresh
         added++;
       } else if (!existing.isCustom) {
         await db.exercises.update(s.id, { instructions: [...s.instructions], commonMistakes: [...s.mistakes], safetyNotes: [...s.safety], nameAr: s.nameAr, tags: [...(s.tags ?? [])], updatedAt: t });
+        // New or changed verified video: replace a missing/older verified link, never the user's own link (LIB-05).
+        if (s.video) {
+          const cur = (await db.exerciseVideos.where('exerciseId').equals(s.id).toArray()).find((v) => v.isPrimary);
+          if (!cur || cur.status === 'missing' || (cur.status === 'verified' && cur.url !== s.video.url)) {
+            await db.exerciseVideos.put({ id: cur?.id ?? `vid_${s.id}`, exerciseId: s.id, url: s.video.url, title: s.video.title, channel: s.video.channel, status: 'verified', verifiedAt: s.video.verifiedAt, isPrimary: true, createdAt: cur?.createdAt ?? t, updatedAt: t });
+          }
+        }
         refreshed++;
       }
     }
