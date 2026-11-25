@@ -221,6 +221,21 @@ test.describe('Phase 2 – workout logging (WO-01…17, TMR-01…03, QA-02)', ()
     await importFixture(page);
     await page.goto('./?e2e#/');
     await expect(page.getByTestId('today-template')).toHaveText('Conditioning');
+    // Sheets stay below the iPhone status bar: simulate a 59 px safe area and open the tall "Other workout" list
+    await page.addStyleTag({ content: ':root { --w-safe-top: 59px !important; }' });
+    const vp = page.viewportSize()!;
+    await page.setViewportSize({ width: vp.width, height: 560 }); // list taller than the screen, like on a real iPhone
+    await page.getByTestId('start-other').click();
+    await expect(page.getByTestId('start-day').first()).toBeVisible();
+    const sheet = page.locator('.mantine-Drawer-content').filter({ has: page.getByTestId('start-day') });
+    await expect.poll(async () => { const b = await sheet.boundingBox(); return b ? Math.round(b.y + b.height) : 0; }).toBe(560); // slide-in finished
+    const close = sheet.locator('.mantine-Drawer-close');
+    const box = await close.boundingBox();
+    expect(box!.y).toBeGreaterThanOrEqual(59);
+    await page.screenshot({ path: shot('34-start-sheet-safe-area') });
+    await close.click();
+    await expect(page.getByTestId('start-day')).toHaveCount(0);
+    await page.setViewportSize(vp);
     await page.getByTestId('day-next').click();
     await expect(page.getByTestId('today-template')).toHaveText('Upper A');
     await page.getByTestId('do-today').click();

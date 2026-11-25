@@ -26,3 +26,8 @@ body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
 /* TMR-03 AC1: accent flash when the rest timer reaches 0 */
 @keyframes w-flash { 0%, 100% { box-shadow: inset 0 0 0 0 transparent; } 30% { box-shadow: inset 0 0 0 12px var(--mantine-color-mint-5); } }
 body.w-flash #root { animation: w-flash 1.2s ease-out 1; }
+/* Bottom sheets must never reach under the iPhone status bar / Dynamic Island: keep the header (title + ✕) below the safe area. */
+.mantine-Drawer-content { max-height: calc(100dvh - var(--w-safe-top) - 12px) !important; }
+.mantine-Drawer-header { position: sticky; top: 0; z-index: 3; background: var(--mantine-color-body); }
+.mantine-Drawer-body { padding-bottom: calc(var(--w-safe-bottom) + 16px); }
+.mantine-Modal-content[data-full-screen] { padding-top: var(--w-safe-top); padding-bottom: var(--w-safe-bottom); }
