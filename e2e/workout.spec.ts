@@ -131,8 +131,8 @@ test.describe('Phase 2 – workout logging (WO-01…17, TMR-01…03, QA-02)', ()
     // History lists the sets; reopening shows them (edit mode, no clock)
     await page.getByRole('link', { name: 'History' }).click();
     await page.getByTestId('history-session').first().getByRole('button').first().click();
-    await expect(page.getByTestId('history-session').first()).toContainText('57.5 kg × 6');
-    await page.getByTestId('history-open').first().click();
+    await expect(page.getByTestId('session-detail')).toContainText('57.5 kg × 6');
+    await page.getByTestId('history-open').click();
     await expect(page.getByTestId('wo-logged')).toBeVisible();
     await expect(page.getByTestId('wo-clock')).toHaveCount(0);
     await expect(row(page, 1).getByTestId('set-weight')).toHaveValue('57.5');
@@ -176,7 +176,7 @@ test.describe('Phase 2 – workout logging (WO-01…17, TMR-01…03, QA-02)', ()
     await page.getByTestId('wo-done').click();
     await page.getByRole('link', { name: 'History' }).click();
     await page.getByTestId('history-session').first().getByRole('button').first().click();
-    await expect(page.getByTestId('history-session').first()).toContainText('30 min · 1 km');
+    await expect(page.getByTestId('session-detail')).toContainText('30 min · 1 km');
 
     // QA-02 AC2: the whole next workout runs offline (airplane mode)
     await page.context().setOffline(true);

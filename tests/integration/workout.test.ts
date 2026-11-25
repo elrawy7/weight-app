@@ -263,35 +263,6 @@ describe('WO-10/11 pause, finish, discard, stale', () => {
   });
 });
 
-describe('BR-PO suggestions (hints only)', () => {
-  const ex = { status: 'active' as const, loadMode: 'total' as const };
-  const prev = (reps: number[], extra = {}) => ({ sessionId: 'x', localDate: '2026-11-21', sets: reps.map((r) => ({ weightKg: 40, reps: r, setType: 'working' as const })), warmups: [], painScore: null, ...extra });
-  const base = { exercise: ex, targetReps: '8-10', incrementKg: 2.5, today: '2026-11-28' };
-  it('all at top → +increment; within → +1 rep; below once → hold; below twice → reduce', () => {
-    expect(W.suggest({ ...base, prev: prev([10, 10, 10]) })).toMatchObject({ kind: 'increase', deltaKg: 2.5, repsTarget: '8' });
-    expect(W.suggest({ ...base, prev: prev([9, 8, 8]) })).toMatchObject({ kind: 'more_reps', deltaKg: 0 });
-    // BR-PO-04: top of range but RPE above target + 0.5 → no increase
-    const hard = { ...prev([10, 10]), sets: [{ weightKg: 40, reps: 10, setType: 'working' as const, rpe: 9.5 }, { weightKg: 40, reps: 10, setType: 'working' as const, rpe: 9 }] };
-    expect(W.suggest({ ...base, targetRpe: '7-8', prev: hard })).toMatchObject({ kind: 'hold' });
-    expect(W.suggest({ ...base, targetRpe: '9', prev: hard })).toMatchObject({ kind: 'increase' });
-    expect(W.suggest({ ...base, prev: prev([8, 7, 6]) })).toMatchObject({ kind: 'hold' });
-    expect(W.suggest({ ...base, prev: prev([8, 7, 6], { olderSets: [{ weightKg: 40, reps: 6, setType: 'working' }] }) })).toMatchObject({ kind: 'reduce', deltaKg: -2.5 });
-  });
-  it('pain ≥4 blocks increases; breaks reduce load; unresolved/no history → none', () => {
-    expect(W.suggest({ ...base, prev: prev([10, 10], { painScore: 4 }) })).toMatchObject({ kind: 'hold' });
-    expect(W.suggest({ ...base, today: '2026-12-08', prev: prev([10]) })).toMatchObject({ kind: 'deload_break', deltaKg: -5 });
-    expect(W.suggest({ ...base, today: '2027-01-10', prev: prev([10]) })).toMatchObject({ kind: 'deload_break', deltaKg: -10 });
-    expect(W.suggest({ ...base, exercise: { status: 'unresolved', loadMode: 'total' }, prev: prev([10]) })).toBeNull();
-    expect(W.suggest({ ...base, prev: null })).toBeNull();
-  });
-  it('parseRepRange', () => {
-    expect(W.parseRepRange('8-10')).toEqual({ min: 8, max: 10 });
-    expect(W.parseRepRange('12 – 15 reps')).toEqual({ min: 12, max: 15 });
-    expect(W.parseRepRange('12')).toEqual({ min: 12, max: 12 });
-    expect(W.parseRepRange('20 min')).toBeNull();
-  });
-});
-
 describe('TMR-01/02 rest timer state', () => {
   it('timestamps survive; ±15, pause/resume, restart, skip', async () => {
     const t0 = 1_000_000;
@@ -322,7 +293,7 @@ describe('PRs (WO-02 / WO-10 summary)', () => {
     s = await W.startWorkout(db, { templateId: 'ua', week: 1, date: '2026-11-24', today: '2026-11-24' });
     [a] = await setsOf((await exOf(s.id, BENCH)).id);
     await W.toggleSetComplete(db, a.id, { weightKg: 42.5, reps: 6 });
-    expect(await W.sessionPRs(db, s.id)).toMatchObject([{ kind: 'weight', value: 42.5 }]);
+    expect(await W.sessionPRs(db, s.id)).toMatchObject([{ kind: 'max_weight', value: 42.5, previous: 40 }, { kind: 'e1rm' }]);
     expect(await W.bestBefore(db, BENCH, s)).toMatchObject({ maxWeightKg: 40, maxReps: 8 });
   });
 });

@@ -38,6 +38,8 @@ export interface Exercise extends Stamped {
   difficulty: SeedExercise['difficulty']; instructions: string[]; commonMistakes: string[]; safetyNotes: string[];
   tags: string[]; defaultRestSec: number; incrementKg: number; isCustom: boolean; isArchived: 0 | 1;
   status: ExerciseStatus; personalNotes: string; mergedInto?: ID;
+  /** PO-04: per-exercise progression strategy; null/undefined = the global default. */
+  strategy?: 'double_progression' | 'linear' | 'rpe_target' | 'manual' | null;
   /** For provisional (unresolved) exercises created by the Notion import. */
   resolution?: { candidates: ID[]; notionName: string; issue: string };
 }
@@ -86,6 +88,8 @@ export interface WorkoutSession extends Stamped {
   lastActivityAt?: ISOTime | null;
   /** When the current pause started (null when running). */
   pausedAt?: ISOTime | null;
+  /** HIST-03 AC2: set when a completed session is corrected afterwards. */
+  editedAt?: ISOTime | null;
 }
 export type SEStatus = 'pending' | 'in_progress' | 'completed' | 'skipped' | 'replaced' | 'not_recorded';
 export interface WorkoutSessionExercise extends Stamped {
@@ -111,7 +115,15 @@ export interface WorkoutSet extends Stamped {
   reps: number | null; durationSec?: number | null; distanceM?: number | null; rpe: number | null; completed: 0 | 1;
   completedAt?: ISOTime | null; side: 'both' | 'left' | 'right'; setTypeConfidence: 'recorded' | 'assumed'; rawCell?: string;
 }
-export interface PersonalRecord { id: ID; exerciseId: ID; type: string; value: number; unit: string; loadMode: LoadMode; setId?: ID; sessionId: ID; achievedAt: ISOTime }
+export interface PersonalRecord {
+  id: ID; exerciseId: ID; type: string; value: number; unit: string; loadMode: LoadMode; setId?: ID; sessionId: ID;
+  /** Local date the record was set (sessions' localDate). */
+  achievedAt: ISOTime;
+  /** Value it beat. */
+  previous?: number;
+  /** For "most reps at a weight". */
+  weightKg?: number;
+}
 export interface LegacyPerformance { id: ID; exerciseId: ID; sourceTemplate: string; weightsBySet: number[]; targetText: string; dateHint: string }
 export interface BodyMeasurement extends Stamped {
   id: ID; date: ISODate; weightKg?: number | null; waistCm?: number | null; notes: string; source: string; dateConfidence?: 'exact' | 'inferred';
@@ -131,6 +143,19 @@ export interface AppSettings extends Stamped {
   installGuideSeen: boolean; plateSetKg: number[]; barbellKg: number; smithBarKg: number | null; ezBarKg: number;
   /** Per-equipment or per-exercise increment overrides (kg). Keys: `eq:<equipmentId>` or `ex:<exerciseId>`. */
   incrementOverrides: Record<string, number>;
+  // SET-03 – progression & muscle counting (Phase 3)
+  /** Share of a set counted for each secondary muscle (0–1, default 0.5). */
+  secondaryMuscleWeight: number;
+  /** Below this many fractional sets per week a muscle is flagged "limited" (default 8). */
+  minWeeklySets: number;
+  defaultStrategy: 'double_progression' | 'linear' | 'rpe_target' | 'manual';
+  /** Increments added per progression step (1–2). */
+  incrementSteps: number;
+  e1rmFormula: 'epley' | 'brzycki';
+  deloadPct: number;
+  deloadSets: number;
+  /** Dumbbells available at the gym, per hand (kg). Suggestions snap to these (PO-02). */
+  dumbbellsKg: number[];
 }
 export interface BackupMetadata { id: ID; createdAt: ISOTime; appVersion: string; schemaVersion: number; counts: Record<string, number>; sha256: string; includesPhotos: boolean; kind: 'manual' | 'auto_snapshot' | 'pre_restore'; fileName?: string }
 export interface MigrationDecision { provisionalId: ID; mappedTo: ID | null; decidedAt: ISOTime; affectedSets: number; affectedRows: number }

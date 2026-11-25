@@ -11,6 +11,7 @@ import { openDatabase } from './db/open';
 import { ensureSeed } from './db/seed';
 import { requestPersistence } from './features/settings/storage';
 import { initServiceWorker } from './pwa/update';
+import { maintenance } from './features/progress/recordsOps';
 
 const root = createRoot(document.getElementById('root')!);
 
@@ -23,6 +24,7 @@ async function boot() {
   }
   try {
     await ensureSeed(r.db);
+    await maintenance(r.db); // Phase 3: purge discarded > 30 days, build PRs once
   } catch (e) {
     root.render(<MantineProvider theme={theme} defaultColorScheme="dark"><RecoveryScreen error={e as Error} /></MantineProvider>);
     return;

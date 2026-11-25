@@ -11,7 +11,8 @@ import { phaseOf, planForDate, setsForWeek, weekOf, type DayPlan } from '../../d
 import { ConfirmSheet, EmptyState, ExerciseCard, KneeBadge, Section } from '../../components/ui';
 import { QuickLogSheet } from './QuickLogSheet';
 import { markDone, undoQuickLog, updateQuickLog } from './quickLog';
-import { BackupIndicator, InstallBanner } from '../../components/banners';
+import { InstallBanner } from '../../components/banners';
+import { Dashboard } from './Dashboard';
 import type { Exercise, WorkoutTemplate } from '../../db/types';
 import * as R from '../../db/repos';
 import { activeSession, estimateMinutes, quickToFull, startWorkout } from '../workout/workoutOps';
@@ -41,7 +42,7 @@ export function TodayPage() {
   const go = (d: string) => nav(d === realToday ? '/' : `/?date=${d}`);
   const data = useLiveQuery(async () => {
     const program = await R.activeProgram(db);
-    if (!program) return { program: null } as const;
+    if (!program) return { program: null, active: await activeSession(db) } as const;
     const schedule = await db.schedules.where('programId').equals(program.id).first();
     const plan = planForDate(schedule, today, program.weeks);
     const templates = await R.templatesOfProgram(db, program.id);
@@ -94,6 +95,11 @@ export function TodayPage() {
         <InstallBanner />
         <EmptyState icon={<IconBarbell />} title={t('today.noProgram')} body={t('today.noProgramBody')}
           action={<Group><Button leftSection={<IconFileImport size={18} />} onClick={() => nav('/import')}>{t('today.import')}</Button><Button variant="default" leftSection={<IconPlus size={18} />} onClick={() => nav('/programs')}>{t('today.createProgram')}</Button></Group>} />
+        {/* FR-PROG-07: an empty workout works without any program */}
+        {data.active
+          ? <Button fullWidth size="lg" leftSection={<IconPlayerPlay />} onClick={() => nav(`/workout/${data.active!.id}`)} data-testid="active-continue">{t('wo.continue')}</Button>
+          : today <= realToday && <Button fullWidth size="lg" variant="light" leftSection={<IconPlayerPlay />} data-testid="start-empty"
+            onClick={() => void startWorkout(db, { week: null, date: today, today: realToday }).then((s) => nav(`/workout/${s.id}`)).catch((e: unknown) => notifications.show({ color: 'red', message: e instanceof Error ? e.message : t('common.error') }))}>{t('wo.startEmpty')}</Button>}
       </>
     );
   }
@@ -149,7 +155,7 @@ export function TodayPage() {
             <Stack gap={4} mt="sm">
               <Title order={2} data-testid="today-template">{template.name}</Title>
               <Text c="dimmed" fz="sm">{template.focus}</Text>
-              <Text fz="sm" fw={600} data-testid="today-estimate">{t('wo.estimate', { n: rows.length, min: estimateMinutes(rows, template.warmup) })}</Text>
+              <Text fz="sm" fw={600} data-testid="today-estimate">{rows.length === 1 ? t('wo.estimate1', { min: estimateMinutes(rows, template.warmup) }) : t('wo.estimate', { n: rows.length, min: estimateMinutes(rows, template.warmup) })}</Text>
               {done ? (
                 <Card withBorder padding="sm" radius="md" mt="xs" bg="var(--mantine-color-mint-light)" data-testid="done-card">
                   <Group justify="space-between" wrap="nowrap">
@@ -196,7 +202,7 @@ export function TodayPage() {
           ))}
         </Card>
 
-        <BackupIndicator compact />
+        {isToday ? <Dashboard today={realToday} /> : null}
         {unresolved > 0 && (
           <Alert color="amber" variant="light" icon={<IconAlertCircle />} title={t('today.unresolved', { n: unresolved })} data-testid="unresolved-banner">
             <Text fz="sm">{t('today.unresolvedBody')}</Text>

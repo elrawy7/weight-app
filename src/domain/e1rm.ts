@@ -11,6 +11,17 @@ export function epley(weightKg: number | null, reps: number | null, loadMode: Lo
   return Math.round(weightKg * (1 + reps / 30) * 10) / 10;
 }
 
+export type E1rmFormula = 'epley' | 'brzycki';
+
+/** BR-CALC-02: Epley by default; Brzycki available as a setting. Same validity limits. */
+export function e1rm(weightKg: number | null, reps: number | null, loadMode: LoadMode = 'total', formula: E1rmFormula = 'epley'): number | null {
+  if (formula === 'epley') return epley(weightKg, reps, loadMode);
+  if (weightKg == null || reps == null || weightKg <= 0 || reps <= 0) return null;
+  if (reps > E1RM_MAX_REPS || NO_E1RM.includes(loadMode)) return null;
+  if (reps === 1) return weightKg;
+  return Math.round((weightKg * 36) / (37 - reps) * 10) / 10;
+}
+
 /** Volume (BR-CALC): weight × reps; per-hand loads count both hands. */
 export function setVolume(weightKg: number | null, reps: number | null, loadMode: LoadMode): number {
   if (weightKg == null || reps == null) return 0;

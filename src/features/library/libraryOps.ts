@@ -4,6 +4,7 @@ import { nowIso } from '../../domain/dates';
 import { uuidv7 } from '../../domain/uuid';
 import { parseYoutubeUrl } from '../../domain/youtube';
 import { matches } from '../../domain/search';
+import { recomputeRecords } from '../progress/recordsOps';
 
 export class LibraryError extends Error {}
 
@@ -83,6 +84,12 @@ export async function changeEquipment(db: WeightDB, id: string, equipmentId: str
 
 /** LIB-07 AC2: merge duplicates. All history and template rows move to the survivor; the old name becomes an alias. */
 export async function mergeExercises(db: WeightDB, fromId: string, intoId: string): Promise<{ movedRows: number; movedSessionExercises: number }> {
+  const r = await mergeInner(db, fromId, intoId);
+  await recomputeRecords(db, [fromId, intoId]);
+  return r;
+}
+
+async function mergeInner(db: WeightDB, fromId: string, intoId: string): Promise<{ movedRows: number; movedSessionExercises: number }> {
   if (fromId === intoId) throw new LibraryError('Choose two different exercises.');
   return db.transaction('rw', [db.exercises, db.templateExercises, db.sessionExercises, db.personalRecords, db.exerciseAlternatives, db.templates], async () => {
     const from = await db.exercises.get(fromId), into = await db.exercises.get(intoId);

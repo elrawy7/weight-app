@@ -4,13 +4,15 @@
  */
 import type { WeightDB } from '../../db/schema';
 import type {
-  Exercise, ID, ISODate, PreviousPerformance, PreviousSet, SetType, WorkoutSession, WorkoutSessionExercise, WorkoutSet, LoadMode,
+  Exercise, ID, ISODate, PreviousPerformance, PreviousSet, SetType, WorkoutSession, WorkoutSessionExercise, WorkoutSet,
 } from '../../db/types';
-import { diffDays, nowIso } from '../../domain/dates';
+import { nowIso } from '../../domain/dates';
 import { uuidv7 } from '../../domain/uuid';
-import { roundToIncrement } from '../../domain/rounding';
 import { setsForWeek } from '../../domain/schedule';
 import { epley, setVolume } from '../../domain/e1rm';
+import { snapWeight, type Suggestion, type WeightContext } from '../../domain/progression';
+import type { PRType } from '../../domain/records';
+import { exercisesOfSession, prEventsFor, recomputeRecords } from '../progress/recordsOps';
 
 export class WorkoutError extends Error {}
 
@@ -60,58 +62,7 @@ export function alignedPrevious(prev: PreviousPerformance | null | undefined, wo
   return s ? { shown: s, prefill: s } : { shown: null, prefill: prev.sets[prev.sets.length - 1] };
 }
 
-/* ───────────── progression suggestion (BR-PO, double progression) ───────────── */
-
-export function parseRepRange(target: string | undefined): { min: number; max: number } | null {
-  if (!target) return null;
-  const m = target.match(/(\d+)\s*[-–]\s*(\d+)/);
-  if (m) return { min: Number(m[1]), max: Number(m[2]) };
-  const one = target.match(/^\s*(\d+)\s*(reps?)?\s*$/i);
-  return one ? { min: Number(one[1]), max: Number(one[1]) } : null;
-}
-
-export interface Suggestion { kind: 'increase' | 'hold' | 'more_reps' | 'reduce' | 'deload_break'; deltaKg: number; message: string; repsTarget?: string }
-
-/**
- * BR-PO-01…07, 09, 12. Returns null when no rule applies (no history, unresolved exercise, no rep range, no load).
- * `deltaKg` is applied to each aligned previous set when the user taps "Use suggestion" (never automatically).
- */
-export function suggest(args: { exercise: Pick<Exercise, 'status' | 'loadMode'>; prev: PreviousPerformance | null | undefined; targetReps?: string; incrementKg: number; today: ISODate; targetRpe?: string }): Suggestion | null {
-  const { exercise, prev, targetReps, incrementKg, today, targetRpe } = args;
-  if (!prev || exercise.status === 'unresolved') return null; // BR-PO-12
-  const noLoad: LoadMode[] = ['none', 'band'];
-  const range = parseRepRange(targetReps);
-  const weights = prev.sets.map((s) => s.weightKg ?? 0);
-  const top = Math.max(0, ...weights);
-  if (noLoad.includes(exercise.loadMode)) return null;
-  if (prev.painScore !== null && prev.painScore >= 4) {
-    return { kind: 'hold', deltaKg: 0, message: `Pain ${prev.painScore}/10 last time – hold the load (or use the knee-friendly alternative).` }; // BR-PO-01
-  }
-  const days = diffDays(today, prev.localDate);
-  const round = (v: number) => roundToIncrement(v, incrementKg || 0.5, 'down');
-  if (days > 28 && top > 0) return { kind: 'deload_break', deltaKg: round(top * 0.8) - top, message: `Back after ${Math.round(days / 7)} weeks – start about 20% lighter.` }; // BR-PO-02
-  if (days >= 14 && top > 0) return { kind: 'deload_break', deltaKg: round(top * 0.9) - top, message: `${days} days since last time – start about 10% lighter.` }; // BR-PO-03
-  if (!range) return null;
-  const reps = prev.sets.map((s) => s.reps ?? 0);
-  const fmt = reps.join('/');
-  const rpeCap = targetRpe ? Math.max(...(targetRpe.match(/\d+(\.\d+)?/g) ?? []).map(Number)) : NaN;
-  const tooHard = Number.isFinite(rpeCap) && prev.sets.some((s) => s.rpe != null && s.rpe > rpeCap + 0.5);
-  if (reps.every((r) => r >= range.max) && tooHard) return { kind: 'hold', deltaKg: 0, message: `${fmt} – top of the range but harder than RPE ${targetRpe}. Repeat the weight.` };
-  if (reps.every((r) => r >= range.max)) {
-    if (exercise.loadMode === 'bodyweight' && top === 0) return { kind: 'more_reps', deltaKg: 0, message: `${fmt} – all at the top. Add load or slow the tempo.` };
-    const inc = exercise.loadMode === 'assist' ? -incrementKg : incrementKg;
-    return { kind: 'increase', deltaKg: inc, repsTarget: `${range.min}`, message: `${fmt} – all at the top of ${range.min}–${range.max}. ${inc > 0 ? 'Add' : 'Reduce assistance by'} ${Math.abs(inc)} kg and restart at ${range.min} reps.` }; // BR-PO-04
-  }
-  const below = reps.some((r) => r < range.min);
-  const olderBelow = !!prev.olderSets?.some((s) => (s.reps ?? 0) < range.min);
-  if (below && olderBelow) {
-    const dec = exercise.loadMode === 'assist' ? incrementKg : -incrementKg;
-    return { kind: 'reduce', deltaKg: dec, message: `Below ${range.min} reps twice in a row – go ${Math.abs(dec)} kg ${dec < 0 ? 'lighter' : 'more assistance'}.` }; // BR-PO-06
-  }
-  if (below) return { kind: 'hold', deltaKg: 0, message: `${fmt} – missed the range once. Repeat the same weight.` }; // BR-PO-07
-  const lowest = Math.min(...reps);
-  return { kind: 'more_reps', deltaKg: 0, message: `${fmt} – same weight, aim for +1 rep on the set with ${lowest}.` }; // BR-PO-05
-}
+/* Progression suggestions live in src/domain/progression.ts (Phase 3 engine). */
 
 /* ───────────── start / continue ───────────── */
 
@@ -164,9 +115,14 @@ const newSet = (seId: ID, order: number, setType: SetType, t: string): WorkoutSe
   side: 'both', setTypeConfidence: 'recorded', createdAt: t, updatedAt: t,
 });
 
-async function touch(db: WeightDB, sessionId: ID) {
+/** Every change: activity timestamp; on a completed session also the "edited" marker and a PR recompute (HIST-03, BR-PR-05). */
+async function touch(db: WeightDB, sessionId: ID, exerciseId?: ID) {
   const t = nowIso();
-  await db.sessions.update(sessionId, { lastActivityAt: t, updatedAt: t });
+  const s = await db.sessions.get(sessionId);
+  if (s?.status === 'completed') {
+    await db.sessions.update(sessionId, { editedAt: t, updatedAt: t });
+    await recomputeRecords(db, exerciseId ? [exerciseId] : await exercisesOfSession(db, sessionId));
+  } else await db.sessions.update(sessionId, { lastActivityAt: t, updatedAt: t });
 }
 
 /* ───────────── set editing (WO-04/05/06) ───────────── */
@@ -179,7 +135,7 @@ export async function updateSet(db: WeightDB, setId: ID, patch: Partial<Pick<Wor
   if (!set) throw new WorkoutError('Set not found.');
   await db.sets.update(setId, { ...patch, updatedAt: nowIso() });
   const se = await db.sessionExercises.get(set.sessionExerciseId);
-  if (se) await touch(db, se.sessionId);
+  if (se) await touch(db, se.sessionId, se.exerciseId);
 }
 
 /**
@@ -194,7 +150,7 @@ export async function toggleSetComplete(db: WeightDB, setId: ID, ghost: { weight
   if (set.completed) {
     await db.sets.update(setId, { completed: 0, completedAt: null, updatedAt: t });
     await refreshExerciseStatus(db, se.id);
-    await touch(db, se.sessionId);
+    await touch(db, se.sessionId, se.exerciseId);
     return { completed: false, startRest: false, restSec: 0 };
   }
   const weightKg = set.weightKg ?? ghost.weightKg;
@@ -208,7 +164,7 @@ export async function toggleSetComplete(db: WeightDB, setId: ID, ghost: { weight
     await db.sets.update(setId, { weightKg: weightKg ?? 0, reps, completed: 1, completedAt: t, updatedAt: t });
   }
   await refreshExerciseStatus(db, se.id);
-  await touch(db, se.sessionId);
+  await touch(db, se.sessionId, se.exerciseId);
   const restSec = se.snapshot?.restSec ?? 90;
   if (set.setType === 'warmup') return { completed: true, startRest: false, restSec };
   return { completed: true, startRest: await isEndOfSupersetRound(db, se), restSec };
@@ -239,7 +195,7 @@ export async function addSet(db: WeightDB, seId: ID, setType: SetType = 'working
   await db.sets.add(s);
   await refreshExerciseStatus(db, seId);
   const se = await db.sessionExercises.get(seId);
-  if (se) await touch(db, se.sessionId);
+  if (se) await touch(db, se.sessionId, se.exerciseId);
   return s;
 }
 
@@ -249,24 +205,40 @@ export async function removeSet(db: WeightDB, setId: ID): Promise<WorkoutSet> {
   if (!set) throw new WorkoutError('Set not found.');
   await db.sets.delete(setId);
   await refreshExerciseStatus(db, set.sessionExerciseId);
+  const se = await db.sessionExercises.get(set.sessionExerciseId);
+  if (se) await touch(db, se.sessionId, se.exerciseId);
   return set;
 }
-export async function restoreSet(db: WeightDB, set: WorkoutSet) { await db.sets.put(set); await refreshExerciseStatus(db, set.sessionExerciseId); }
+export async function restoreSet(db: WeightDB, set: WorkoutSet) {
+  await db.sets.put(set);
+  await refreshExerciseStatus(db, set.sessionExerciseId);
+  const se = await db.sessionExercises.get(set.sessionExerciseId);
+  if (se) await touch(db, se.sessionId, se.exerciseId);
+}
 
-/** "Use suggestion" (BR-PO-09): fills empty, not-yet-completed working sets from the aligned previous set + delta. */
-export async function applySuggestion(db: WeightDB, seId: ID, deltaKg: number, incrementKg: number, repsTarget?: string) {
+/**
+ * "Use suggestion" (BR-PO-09/10): fills the not-yet-completed working sets from the aligned previous set with the
+ * suggested change, snapped to achievable loads. A deload also removes one empty set.
+ */
+export async function applySuggestion(db: WeightDB, seId: ID, sug: Pick<Suggestion, 'deltaKg' | 'factor' | 'snap' | 'repsTarget' | 'setsDelta'>, weights: WeightContext) {
   const se = await db.sessionExercises.get(seId);
   if (!se) return;
   const prev = se.snapshot?.previous;
-  const sets = (await db.sets.where('sessionExerciseId').equals(seId).sortBy('orderIndex')).filter((s) => s.setType !== 'warmup');
+  let sets = (await db.sets.where('sessionExerciseId').equals(seId).sortBy('orderIndex')).filter((s) => s.setType !== 'warmup');
+  if (sug.setsDelta && sug.setsDelta < 0) {
+    const drop = sets.filter((s) => !s.completed).slice(sug.setsDelta);
+    if (sets.length - drop.length >= 1) { await db.sets.bulkDelete(drop.map((s) => s.id)); sets = sets.filter((s) => !drop.includes(s)); }
+  }
   for (const [i, s] of sets.entries()) {
     if (s.completed) continue;
     const { prefill } = alignedPrevious(prev, i);
-    if (!prefill?.weightKg && prefill?.weightKg !== 0) continue;
-    const w = Math.max(0, roundToIncrement(prefill.weightKg + deltaKg, incrementKg || 0.5));
-    await db.sets.update(s.id, { weightKg: w, reps: repsTarget ? Number(repsTarget) : s.reps, updatedAt: nowIso() });
+    if (prefill?.weightKg == null) continue;
+    const raw = sug.factor ? prefill.weightKg * sug.factor : prefill.weightKg + sug.deltaKg;
+    const w = snapWeight(Math.max(0, raw), weights, sug.snap);
+    await db.sets.update(s.id, { weightKg: w, reps: sug.repsTarget ?? s.reps, updatedAt: nowIso() });
   }
-  await touch(db, se.sessionId);
+  await refreshExerciseStatus(db, seId);
+  await touch(db, se.sessionId, se.exerciseId);
 }
 
 /* ───────────── exercise-level actions (WO-07/08/13/14) ───────────── */
@@ -392,6 +364,7 @@ export async function finishSession(db: WeightDB, id: ID, extra: { kneePain: num
     });
   });
   await clearRestFor(db, id);
+  await recomputeRecords(db, await exercisesOfSession(db, id)); // PR-01: store the new records
 }
 
 async function clearRestFor(db: WeightDB, sessionId: ID) {
@@ -413,6 +386,7 @@ export async function discardSession(db: WeightDB, id: ID) {
   if (!s) return;
   await db.sessions.update(id, { status: 'discarded', statusBeforeDiscard: s.status === 'discarded' ? s.statusBeforeDiscard : s.status, discardedAt: nowIso(), updatedAt: nowIso() });
   await clearRestFor(db, id);
+  if (s.status === 'completed') await recomputeRecords(db, await exercisesOfSession(db, id)); // BR-PR-05
 }
 
 /** Discarded sessions still restorable (30 days), newest first. */
@@ -426,6 +400,7 @@ export async function restoreSession(db: WeightDB, id: ID) {
   if (!s || s.status !== 'discarded') return;
   const back = s.statusBeforeDiscard === 'active' || s.statusBeforeDiscard === 'paused' ? ((await activeSession(db)) ? 'completed' : 'paused') : (s.statusBeforeDiscard ?? 'completed');
   await db.sessions.update(id, { status: back, discardedAt: null, updatedAt: nowIso() });
+  if (back === 'completed') await recomputeRecords(db, await exercisesOfSession(db, id));
 }
 export const restorableUntil = (discardedAt: string) => new Date(new Date(discardedAt).getTime() + 30 * 86400000);
 
@@ -512,34 +487,21 @@ export async function bestBefore(db: WeightDB, exerciseId: ID, before: Pick<Work
   return best;
 }
 
-export interface PR { exerciseId: ID; exerciseName: string; kind: 'weight' | 'e1rm' | 'reps'; value: number; setId: ID }
+export interface PR { exerciseId: ID; exerciseName: string; kind: PRType; value: number; previous: number; unit: string; setId?: ID; weightKg?: number }
 
-/** New bests in this session versus earlier history (first-ever performances are a baseline, not a PR). */
+/** PRs achieved in this session (running or completed) versus all earlier history – BR-PR-01…06 via the records engine. */
 export async function sessionPRs(db: WeightDB, sessionId: ID): Promise<PR[]> {
   const s = await db.sessions.get(sessionId);
   if (!s) return [];
+  const ids = await exercisesOfSession(db, sessionId);
   const out: PR[] = [];
-  const ses = (await db.sessionExercises.where('sessionId').equals(sessionId).toArray()).filter((x) => x.status !== 'replaced' && x.status !== 'skipped' && !x.cardio);
-  for (const se of ses) {
-    const ex = await db.exercises.get(se.exerciseId);
-    if (!ex || ex.status === 'unresolved') continue;
-    const prev = await bestBefore(db, se.exerciseId, s);
-    if (!prev) continue;
-    const sets = (await db.sets.where('sessionExerciseId').equals(se.id).toArray()).filter((x) => x.completed === 1 && x.setType !== 'warmup');
-    if (!sets.length) continue;
-    const heavy = sets.reduce((a, b) => ((b.weightKg ?? 0) > (a.weightKg ?? 0) ? b : a));
-    const noLoad = ex.loadMode === 'bodyweight' || ex.loadMode === 'none' || ex.loadMode === 'band';
-    if (!noLoad && (heavy.weightKg ?? 0) > prev.maxWeightKg) out.push({ exerciseId: ex.id, exerciseName: ex.name, kind: 'weight', value: heavy.weightKg ?? 0, setId: heavy.id });
-    else if (!noLoad) {
-      const e = sets.map((x) => ({ x, v: epley(x.weightKg, x.reps, ex.loadMode) ?? 0 })).sort((a, b) => b.v - a.v)[0];
-      if (e && e.v > prev.maxE1rm + 0.01) out.push({ exerciseId: ex.id, exerciseName: ex.name, kind: 'e1rm', value: Math.round(e.v * 10) / 10, setId: e.x.id });
-    }
-    if (noLoad) {
-      const r = sets.reduce((a, b) => ((b.reps ?? 0) > (a.reps ?? 0) ? b : a));
-      if ((r.reps ?? 0) > prev.maxReps) out.push({ exerciseId: ex.id, exerciseName: ex.name, kind: 'reps', value: r.reps ?? 0, setId: r.id });
+  for (const ex of (await db.exercises.bulkGet(ids)).filter((e): e is Exercise => !!e && e.status !== 'unresolved')) {
+    for (const e of await prEventsFor(db, ex, { includeSessionId: sessionId })) {
+      if (e.sessionId === sessionId) out.push({ exerciseId: ex.id, exerciseName: ex.name, kind: e.type, value: e.value, previous: e.previous, unit: e.unit, setId: e.setId, weightKg: e.weightKg });
     }
   }
-  return out;
+  const order: PRType[] = ['max_weight', 'e1rm', 'reps_at_weight', 'max_reps', 'exercise_volume', 'duration', 'distance', 'speed'];
+  return out.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
 }
 
 /**

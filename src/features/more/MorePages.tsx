@@ -11,6 +11,9 @@ import { BackupIndicator } from '../../components/banners';
 import { requestPersistence, storageStatus, formatBytes, type StorageStatus } from '../settings/storage';
 import { isStandalone, speechSupported, wakeLockSupported } from '../../pwa/platform';
 import { WEEKDAYS, type ThemePref, type Weekday } from '../../db/types';
+import { STRATEGIES } from '../../domain/progression';
+import type { AppSettings } from '../../db/types';
+import { recomputeRecords } from '../progress/recordsOps';
 
 declare const __APP_VERSION__: string;
 declare const __BUILD_TIME__: string;
@@ -78,6 +81,21 @@ export function SettingsPage() {
           <Group justify="space-between"><Switch label={t('set.spoken')} checked={s.spokenCues} onChange={(e) => set({ spokenCues: e.currentTarget.checked })} />{support(speechSupported())}</Group>
           <Group justify="space-between"><Switch label={t('set.keepAwake')} checked={s.keepAwake} onChange={(e) => set({ keepAwake: e.currentTarget.checked })} />{support(wakeLockSupported())}</Group>
         </Section>
+        <Section title={t('set.progression')}>
+          <Select label={t('set.strategy')} description={t('set.strategyHelp')} data={STRATEGIES.map((v) => ({ value: v, label: t(`strategy.${v}`) }))} value={s.defaultStrategy}
+            onChange={(v) => v && set({ defaultStrategy: v as AppSettings['defaultStrategy'] })} data-testid="set-strategy" allowDeselect={false} />
+          <div><Text fz="sm" fw={500} mb={4}>{t('set.incrementSteps')}</Text>
+            <SegmentedControl fullWidth data={[{ value: '1', label: t('set.oneStep') }, { value: '2', label: t('set.twoSteps') }]} value={String(s.incrementSteps)} onChange={(v) => set({ incrementSteps: Number(v) })} data-testid="set-steps" /></div>
+          <Select label={t('set.e1rm')} data={[{ value: 'epley', label: t('set.epley') }, { value: 'brzycki', label: t('set.brzycki') }]} value={s.e1rmFormula} allowDeselect={false}
+            onChange={(v) => { if (v) void saveSettings(db, { e1rmFormula: v as AppSettings['e1rmFormula'] }).then(() => recomputeRecords(db)); }} data-testid="set-e1rm" />
+          <Group grow>
+            <NumberInput label={t('set.deloadPct')} suffix=" %" min={0} max={40} value={s.deloadPct} onChange={(v) => set({ deloadPct: Math.min(40, Math.max(0, Number(v) || 0)) })} />
+            <NumberInput label={t('set.deloadSets')} min={0} max={3} value={s.deloadSets} onChange={(v) => set({ deloadSets: Math.min(3, Math.max(0, Number(v) || 0)) })} />
+          </Group>
+          <NumberInput label={t('set.secondary')} description={t('set.secondaryHelp')} min={0} max={1} step={0.25} decimalScale={2} value={s.secondaryMuscleWeight}
+            onChange={(v) => set({ secondaryMuscleWeight: Math.min(1, Math.max(0, Number(v))) })} data-testid="set-secondary" />
+          <NumberInput label={t('set.minSets')} min={1} max={40} value={s.minWeeklySets} onChange={(v) => set({ minWeeklySets: Math.max(1, Number(v) || 8) })} data-testid="set-min-sets" />
+        </Section>
         {profile && (
           <Section title={t('set.profile')}>
             <TextInput label={t('set.name')} defaultValue={profile.name} onBlur={(e) => void db.profile.update('me', { name: e.currentTarget.value, updatedAt: nowIso() })} />
@@ -108,6 +126,8 @@ export function EquipmentPage() {
         <NumberInput label={t('eq.smith')} min={0} max={50} decimalScale={2} value={s.smithBarKg ?? ''} onChange={(v) => void saveSettings(db, { smithBarKg: typeof v === 'number' ? v : null })} data-testid="smith-bar" />
         <NumberInput label={t('eq.ez')} min={0} max={30} decimalScale={2} value={s.ezBarKg} onChange={(v) => void saveSettings(db, { ezBarKg: Number(v) || 0 })} />
         <TextInput label={t('eq.plates')} defaultValue={s.plateSetKg.join(', ')} onBlur={(e) => void saveSettings(db, { plateSetKg: e.currentTarget.value.split(/[,\s]+/).map(Number).filter((n) => n > 0).sort((a, b) => b - a) })} />
+        <TextInput label={t('eq.dumbbells')} description={t('eq.dumbbellsHelp')} defaultValue={s.dumbbellsKg.join(', ')} data-testid="dumbbells"
+          onBlur={(e) => void saveSettings(db, { dumbbellsKg: [...new Set(e.currentTarget.value.split(/[,\s]+/).map(Number).filter((n) => n > 0))].sort((a, b) => a - b) })} />
       </Section>
       <Section title={t('more.equipment')}>
         {eq.filter((e) => e.loadMode !== 'none' && e.loadMode !== 'band' && e.loadMode !== 'bodyweight').map((e) => (

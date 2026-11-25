@@ -1,0 +1,119 @@
+/** History (HIST-01…06): list items with filters, session detail, repeat, compare. */
+import type { WeightDB } from '../../db/schema';
+import type { Exercise, ID, PersonalRecord, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from '../../db/types';
+import { nowIso } from '../../domain/dates';
+import { setVolume, epley } from '../../domain/e1rm';
+import { uuidv7 } from '../../domain/uuid';
+import { activeSession, addExerciseToSession, summarize, WorkoutError, DATE_SOURCE_LIVE, type SessionSummary } from '../workout/workoutOps';
+
+export interface HistoryItem {
+  session: WorkoutSession; templateName?: string; programName?: string;
+  setsDone: number; volumeKg: number; prCount: number; exerciseIds: ID[]; muscles: string[];
+}
+
+/** All completed sessions, newest first, with the data needed for filters (HIST-01). */
+export async function historyItems(db: WeightDB): Promise<HistoryItem[]> {
+  const sessions = (await db.sessions.where('status').equals('completed').toArray()).sort((a, b) => `${b.localDate}|${b.startedAt ?? ''}`.localeCompare(`${a.localDate}|${a.startedAt ?? ''}`));
+  if (!sessions.length) return [];
+  const ids = sessions.map((s) => s.id);
+  const ses = await db.sessionExercises.where('sessionId').anyOf(ids).toArray();
+  const sets = ses.length ? await db.sets.where('sessionExerciseId').anyOf(ses.map((x) => x.id)).toArray() : [];
+  const exs = new Map((await db.exercises.toArray()).map((e) => [e.id, e]));
+  const links = await db.exerciseMuscles.toArray();
+  const parentOf = new Map((await db.muscleGroups.toArray()).map((g) => [g.id, g.parentId || g.id]));
+  const musclesOf = new Map<ID, string[]>();
+  for (const l of links) if (l.role === 'primary') musclesOf.set(l.exerciseId, [...(musclesOf.get(l.exerciseId) ?? []), parentOf.get(l.muscleGroupId) ?? l.muscleGroupId]);
+  const tpls = new Map((await db.templates.toArray()).map((t) => [t.id, t.name]));
+  const progs = new Map((await db.programs.toArray()).map((p) => [p.id, p.name]));
+  const prs = await db.personalRecords.where('sessionId').anyOf(ids).toArray();
+  const setsBySe = new Map<ID, WorkoutSet[]>();
+  for (const x of sets) setsBySe.set(x.sessionExerciseId, [...(setsBySe.get(x.sessionExerciseId) ?? []), x]);
+  return sessions.map((s) => {
+    const mine = ses.filter((x) => x.sessionId === s.id && x.status !== 'replaced');
+    let setsDone = 0, volumeKg = 0;
+    for (const se of mine) for (const x of setsBySe.get(se.id) ?? []) {
+      if (!x.completed || x.setType === 'warmup') continue;
+      setsDone++;
+      volumeKg += setVolume(x.weightKg, x.reps, exs.get(se.exerciseId)?.loadMode ?? 'none');
+    }
+    const exerciseIds = [...new Set(mine.filter((x) => x.status !== 'skipped').map((x) => x.exerciseId))];
+    return {
+      session: s, templateName: s.templateId ? tpls.get(s.templateId) : undefined, programName: s.programId ? progs.get(s.programId) : undefined,
+      setsDone, volumeKg: Math.round(volumeKg), prCount: prs.filter((p) => p.sessionId === s.id).length,
+      exerciseIds, muscles: [...new Set(exerciseIds.flatMap((id) => musclesOf.get(id) ?? []))],
+    };
+  });
+}
+
+export interface HistoryFilter { programId?: string | null; muscle?: string | null; exerciseId?: string | null }
+export function filterHistory(items: HistoryItem[], f: HistoryFilter): HistoryItem[] {
+  return items.filter((i) => (!f.programId || i.session.programId === f.programId) && (!f.muscle || i.muscles.includes(f.muscle)) && (!f.exerciseId || i.exerciseIds.includes(f.exerciseId)));
+}
+
+export interface DetailExercise { se: WorkoutSessionExercise; ex: Exercise | undefined; sets: WorkoutSet[]; volumeKg: number }
+export interface SessionDetail { session: WorkoutSession; templateName?: string; programName?: string; exercises: DetailExercise[]; summary: SessionSummary; records: PersonalRecord[] }
+
+/** HIST-02: everything about one session. */
+export async function sessionDetail(db: WeightDB, id: ID): Promise<SessionDetail | null> {
+  const s = await db.sessions.get(id);
+  if (!s) return null;
+  const ses = (await db.sessionExercises.where('sessionId').equals(id).toArray()).filter((x) => x.status !== 'replaced').sort((a, b) => a.orderIndex - b.orderIndex);
+  const exs = new Map((await db.exercises.bulkGet(ses.map((x) => x.exerciseId))).filter((e): e is Exercise => !!e).map((e) => [e.id, e]));
+  const sets = ses.length ? await db.sets.where('sessionExerciseId').anyOf(ses.map((x) => x.id)).toArray() : [];
+  const exercises = ses.map((se) => {
+    const mine = sets.filter((x) => x.sessionExerciseId === se.id).sort((a, b) => a.orderIndex - b.orderIndex);
+    const ex = exs.get(se.exerciseId);
+    return { se, ex, sets: mine, volumeKg: Math.round(mine.filter((x) => x.completed && x.setType !== 'warmup').reduce((v, x) => v + setVolume(x.weightKg, x.reps, ex?.loadMode ?? 'none'), 0)) };
+  });
+  return {
+    session: s, templateName: s.templateId ? (await db.templates.get(s.templateId))?.name : undefined, programName: s.programId ? (await db.programs.get(s.programId))?.name : undefined,
+    exercises, summary: await summarize(db, id), records: await db.personalRecords.where('sessionId').equals(id).toArray(),
+  };
+}
+
+/** HIST-05: a new active session today with the same exercises and targets; previous values come from the latest performance. */
+export async function repeatSession(db: WeightDB, sourceId: ID, today: string): Promise<WorkoutSession> {
+  if (await activeSession(db)) throw new WorkoutError('Another workout is still in progress. Continue or finish it first.');
+  const src = await db.sessions.get(sourceId);
+  if (!src) throw new WorkoutError('Session not found.');
+  const t = nowIso();
+  const s: WorkoutSession = {
+    id: uuidv7(), programId: src.programId, templateId: src.templateId, programWeek: src.programWeek, status: 'active', startedAt: t, endedAt: null, pausedMs: 0,
+    localDate: today, notes: '', source: 'app', logType: 'full', lastActivityAt: t, pausedAt: null, createdAt: t, updatedAt: t, dateSource: DATE_SOURCE_LIVE,
+  };
+  await db.sessions.add(s);
+  const ses = (await db.sessionExercises.where('sessionId').equals(sourceId).toArray()).filter((x) => x.status !== 'replaced').sort((a, b) => a.orderIndex - b.orderIndex);
+  for (const [i, se] of ses.entries()) {
+    const n = await db.sets.where('sessionExerciseId').equals(se.id).filter((x) => x.setType !== 'warmup').count();
+    const { previous: _p, ...targets } = se.snapshot ?? {};
+    void _p;
+    await addExerciseToSession(db, s, se.exerciseId, i + 1, { ...targets, targetSets: targets.targetSets ?? (n || undefined) }, se.supersetGroup);
+  }
+  return s;
+}
+
+/* ───────────── HIST-06 compare ───────────── */
+
+export interface SideStats { sets: number; best: WorkoutSet | null; volumeKg: number; e1rm: number | null; cardioMin?: number }
+export interface CompareRow { exerciseId: ID; name: string; loadMode: string; a: SideStats; b: SideStats }
+
+function side(d: DetailExercise): SideStats {
+  const w = d.sets.filter((x) => x.completed && x.setType !== 'warmup');
+  const lm = d.ex?.loadMode ?? 'none';
+  const best = w.reduce<WorkoutSet | null>((b, x) => (!b || (x.weightKg ?? 0) > (b.weightKg ?? 0) || ((x.weightKg ?? 0) === (b.weightKg ?? 0) && (x.reps ?? 0) > (b.reps ?? 0)) ? x : b), null);
+  const e = Math.max(0, ...w.map((x) => epley(x.weightKg, x.reps, lm) ?? 0));
+  return { sets: w.length, best, volumeKg: d.volumeKg, e1rm: e > 0 ? e : null, cardioMin: d.se.cardio?.durationMin };
+}
+
+/** Matching exercises side by side; others listed separately (never compared – BR-EX-03). */
+export function compareSessions(a: SessionDetail, b: SessionDetail): { rows: CompareRow[]; onlyA: DetailExercise[]; onlyB: DetailExercise[] } {
+  const done = (d: DetailExercise) => d.se.status !== 'skipped';
+  const A = a.exercises.filter(done), B = b.exercises.filter(done);
+  const rows: CompareRow[] = [];
+  for (const x of A) {
+    const y = B.find((z) => z.se.exerciseId === x.se.exerciseId);
+    if (y) rows.push({ exerciseId: x.se.exerciseId, name: x.ex?.name ?? x.se.exerciseId, loadMode: x.ex?.loadMode ?? 'none', a: side(x), b: side(y) });
+  }
+  const matched = new Set(rows.map((r) => r.exerciseId));
+  return { rows, onlyA: A.filter((x) => !matched.has(x.se.exerciseId)), onlyB: B.filter((x) => !matched.has(x.se.exerciseId)) };
+}

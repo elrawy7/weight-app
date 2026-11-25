@@ -8,6 +8,7 @@ import type * as T from '../../db/types';
 import { canonicalJson, sha256Hex } from '../../domain/hash';
 import { nowIso } from '../../domain/dates';
 import { muscleGroups } from '../../seed/exercises';
+import { recomputeRecords } from '../progress/recordsOps';
 
 const num = z.number().nullable();
 const SetZ = z.object({ order: z.number(), setType: z.enum(['warmup', 'working', 'drop', 'failure']), setTypeConfidence: z.enum(['recorded', 'assumed']), weightKg: num, reps: num, completed: z.boolean(), rpe: num, rawCell: z.string() });
@@ -193,6 +194,7 @@ export async function applyImport(db: WeightDB, pkg: ImportPackage, fileName: st
   for (const k of ['templates', 'templateRows', 'sessions', 'sessionExercises', 'sets'] as const) {
     if (check[k] !== pv.counts[k]) throw new ImportError(`Post-import check failed for ${k}: expected ${pv.counts[k]}, found ${check[k]}`);
   }
+  await recomputeRecords(db); // BR-PR-05: records derive from the imported history
   return { status: 'imported', counts: pv.counts };
 }
 
@@ -216,6 +218,12 @@ export async function countImported(db: WeightDB, pkg: ImportPackage) {
  * Re-points template rows and logged session exercises in one transaction and records the decision.
  */
 export async function resolveExercise(db: WeightDB, provisionalId: string, targetId: string | null): Promise<T.MigrationDecision> {
+  const d = await resolveExerciseInner(db, provisionalId, targetId);
+  if (targetId) await recomputeRecords(db, [provisionalId, targetId]);
+  return d;
+}
+
+async function resolveExerciseInner(db: WeightDB, provisionalId: string, targetId: string | null): Promise<T.MigrationDecision> {
   const t = nowIso();
   return db.transaction('rw', [db.exercises, db.templateExercises, db.sessionExercises, db.sets, db.migrations, db.templates], async () => {
     const prov = await db.exercises.get(provisionalId);

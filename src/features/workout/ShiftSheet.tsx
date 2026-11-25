@@ -47,7 +47,7 @@ export function ShiftSheet({ source, today, onClose }: { source: string | null; 
       nav(`/workout/${s.id}`);
       if (shift) {
         notifications.show({ id: 'plan-shifted', autoClose: 8000, message: (
-          <Group justify="space-between" wrap="nowrap"><Text fz="sm">{t('shift.done')}</Text>
+          <Group justify="space-between" wrap="nowrap"><Text fz="sm" style={{ flex: 1 }}>{t('shift.done')}</Text>
             <Button size="xs" variant="light" onClick={() => { notifications.hide('plan-shifted'); void undoShift(db).then(() => notifications.show({ message: t('shift.undone') })); }} data-testid="shift-undo">{t('ql.undo')}</Button></Group>) });
       }
     } catch (e) {

@@ -11,6 +11,7 @@ import type { WorkoutSession } from '../../db/types';
 import { Scale } from '../today/QuickLogSheet';
 import { StatCard } from '../../components/ui';
 import * as W from './workoutOps';
+import { prText } from '../progress/prText';
 
 export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: { opened: boolean; onClose: () => void; session: WorkoutSession; live: boolean; stale: boolean; onSaved: () => void }) {
   const db = useDb();
@@ -41,8 +42,8 @@ export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: 
       // BAK-03 AC1: a PR session just saved → backup reminder banner
       if (running && info?.prs.length) {
         notifications.show({ id: 'pr-backup', color: 'amber', autoClose: 8000, message: (
-          <Group justify="space-between" wrap="nowrap"><Text fz="sm">{t('wo.prBackup')}</Text>
-            <Button size="xs" variant="light" color="amber" onClick={() => { notifications.hide('pr-backup'); nav('/backup'); }} data-testid="pr-backup">{t('wo.backupNow')}</Button></Group>) });
+          <Group justify="space-between" wrap="nowrap"><Text fz="sm" style={{ flex: 1 }}>{t('wo.prBackup')}</Text>
+            <Button size="xs" variant="light" color="amber" style={{ flexShrink: 0 }} onClick={() => { notifications.hide('pr-backup'); nav('/backup'); }} data-testid="pr-backup">{t('wo.backupNow')}</Button></Group>) });
       }
     } catch (e) { setError(e instanceof Error ? e.message : t('common.error')); } finally { setBusy(false); }
   };
@@ -60,7 +61,7 @@ export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: 
               </SimpleGrid>
               {info.prs.length > 0 && (
                 <Alert color="amber" variant="light" title={t('wo.newBests')} data-testid="sum-prs">
-                  <Stack gap={2}>{info.prs.map((p) => <Group key={p.setId} gap={6}><Badge color="amber" size="sm">{t('wo.pr')}</Badge><Text fz="sm">{p.exerciseName} · {p.kind === 'weight' ? formatWeight(p.value, settings.weightUnit) : p.kind === 'e1rm' ? t('wo.e1rm', { v: formatWeight(p.value, settings.weightUnit) }) : t('wo.repsPr', { n: p.value })}</Text></Group>)}</Stack>
+                  <Stack gap={2}>{info.prs.map((p) => <Group key={p.setId} gap={6}><Badge color="amber" size="sm">{t('wo.pr')}</Badge><Text fz="sm">{p.exerciseName} · {prText(p, settings.weightUnit)}</Text></Group>)}</Stack>
                 </Alert>
               )}
               {sum.incomplete.length > 0 && running && <Alert color="gray" variant="light" title={t('wo.incomplete')} data-testid="sum-incomplete"><Text fz="sm">{sum.incomplete.join(', ')}</Text><Text fz="xs" c="dimmed" mt={4}>{t('wo.incompleteNote')}</Text></Alert>}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Anchor, Badge, Button, Card, Group, List, Menu, NumberInput, Stack, Text, TextInput, Textarea, ActionIcon } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Card, Group, List, Menu, NumberInput, Select, Stack, Text, TextInput, Textarea, ActionIcon } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconBrandYoutube, IconDots, IconSearch, IconAlertTriangle, IconCheck } from '@tabler/icons-react';
 import { useDb, useSettings, saveSettings } from '../../app/db';
@@ -14,6 +14,7 @@ import { ExercisePicker } from '../../components/ExercisePicker';
 import { alternativesFor, mergeExercises, renameExercise, setArchived, setUserVideo, LibraryError } from './libraryOps';
 import * as R from '../../db/repos';
 import { ExerciseHistoryList } from '../workout/ExerciseHistory';
+import { STRATEGIES, type Strategy } from '../../domain/progression';
 
 const err = (e: unknown) => notifications.show({ color: 'red', message: e instanceof LibraryError ? e.message : t('common.error') });
 
@@ -111,7 +112,9 @@ export function ExerciseDetailPage() {
           </Card>
         </Section>
 
-        <Section title={t('wo.yourHistory')}><ExerciseHistoryList exerciseId={ex.id} limit={20} /></Section>
+        <Section title={t('wo.yourHistory')} right={<Button size="xs" variant="subtle" onClick={() => nav(`/progress/exercise/${ex.id}`)} data-testid="ex-open-progress">{t('an.seeProgress')}</Button>}>
+          <ExerciseHistoryList exerciseId={ex.id} limit={20} />
+        </Section>
         {ex.instructions.length > 0 && <Section title={t('ex.instructions')}><Card withBorder padding="sm"><List type="ordered" spacing={6}>{ex.instructions.map((s, i) => <List.Item key={i}>{s}</List.Item>)}</List></Card></Section>}
         {ex.commonMistakes.length > 0 && <Section title={t('ex.mistakes')}><Card withBorder padding="sm"><List spacing={4}>{ex.commonMistakes.map((s, i) => <List.Item key={i}>{s}</List.Item>)}</List></Card></Section>}
         {(ex.safetyNotes.length > 0 || ex.tags.includes('knee_caution')) && (
@@ -137,11 +140,14 @@ export function ExerciseDetailPage() {
             {ex.loadMode !== 'none' && ex.loadMode !== 'bodyweight' && <Row k={t('ex.increment')} v={`${inc} ${t('common.kg')}`} />}
             {ex.aliases.length > 0 && <Row k={t('ex.aliases')} v={ex.aliases.join(', ')} />}
             <Text fz="xs" c="dimmed">{t('ex.usage', { rows: usage.templateRows, sessions: usage.sessionExercises })}</Text>
-            {['total', 'per_hand', 'stack', 'assist'].includes(ex.loadMode) && (
+            {['total', 'per_hand', 'stack', 'assist'].includes(ex.loadMode) && (<>
+              <Select label={t('ex.strategy')} data={[{ value: 'default', label: t('ex.strategyDefault', { s: t(`strategy.${settings.defaultStrategy}`) }) }, ...STRATEGIES.map((v) => ({ value: v, label: t(`strategy.${v}`) }))]}
+                value={ex.strategy ?? 'default'} allowDeselect={false} data-testid="ex-strategy"
+                onChange={(v) => void db.exercises.update(ex.id, { strategy: !v || v === 'default' ? null : (v as Strategy), updatedAt: nowIso() })} />
               <NumberInput label={t('ex.incrementOverride')} placeholder={String(ex.incrementKg)} min={0} max={50} decimalScale={2} step={0.25}
                 value={settings.incrementOverrides[overrideKey] ?? ''} data-testid="ex-increment"
                 onChange={(v) => { const o = { ...settings.incrementOverrides }; if (typeof v === 'number' && v > 0) o[overrideKey] = v; else delete o[overrideKey]; void saveSettings(db, { incrementOverrides: o }); }} />
-            )}
+            </>)}
           </Stack></Card>
         </Section>
 
