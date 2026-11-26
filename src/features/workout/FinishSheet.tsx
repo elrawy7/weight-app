@@ -1,5 +1,5 @@
 /** WO-10 AC2: summary before saving (duration, sets, volume, PRs, incomplete exercises, pain) + knee / energy / note. */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
@@ -12,6 +12,7 @@ import { Scale } from '../today/QuickLogSheet';
 import { StatCard } from '../../components/ui';
 import * as W from './workoutOps';
 import { prText } from '../progress/prText';
+import { useAutosave } from './autosave';
 
 export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: { opened: boolean; onClose: () => void; session: WorkoutSession; live: boolean; stale: boolean; onSaved: () => void }) {
   const db = useDb();
@@ -25,13 +26,19 @@ export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: 
   const [minutes, setMinutes] = useState<number | ''>('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // initialise once per opening – live updates of the session (e.g. our own note autosave) never reset what is typed
+  const inited = useRef(false);
   useEffect(() => {
-    if (!opened) return;
+    if (!opened) { inited.current = false; return; }
+    if (inited.current) return;
+    inited.current = true;
     setKnee(session.kneePain ?? null); setEnergy(session.energy ?? null); setNotes(session.notes ?? ''); setError(null);
     // Live: elapsed clock (BR-SES-08). Stale: up to the last activity. Back-logged / editing: what you enter.
     const m = !running ? session.durationMin : live ? Math.round(W.elapsedMs(stale && session.lastActivityAt ? { ...session, endedAt: session.lastActivityAt } : session) / 60000) : session.durationMin;
     setMinutes(m ?? '');
   }, [opened, session, running, live, stale]);
+  // A-04: the note is saved while typing (and when the app is hidden), so closing the sheet or iOS ending the tab keeps it
+  const notesSave = useAutosave(notes, session.notes ?? '', (v) => W.setSessionNotes(db, session.id, v), { enabled: opened && inited.current });
   const save = async () => {
     setBusy(true); setError(null);
     try {
@@ -72,7 +79,8 @@ export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: 
             description={live && running ? t('wo.minutesLive') : t('wo.minutesManual')} data-testid="finish-minutes" />
           <div><Text fz="sm" fw={500} mb={4}>{t('ql.knee')}</Text><Scale values={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} cols={6} value={knee} onChange={setKnee} label={t('ql.knee')} testId="finish-knee" /></div>
           <div><Text fz="sm" fw={500} mb={4}>{t('ql.energy')}</Text><Scale values={[1, 2, 3, 4, 5]} cols={5} value={energy} onChange={setEnergy} label={t('ql.energy')} testId="finish-energy" /></div>
-          <Textarea label={t('ql.notes')} autosize minRows={2} value={notes} onChange={(e) => setNotes(e.currentTarget.value)} data-testid="finish-notes" />
+          <Textarea label={t('ql.notes')} autosize minRows={2} value={notes} maxLength={5000} onChange={(e) => setNotes(e.currentTarget.value)} onBlur={() => void notesSave.flush()}
+            description={notesSave.state === 'saving' ? t('common.saving') : notesSave.state === 'saved' ? t('common.saved') : notesSave.state === 'error' ? t('common.notSaved') : undefined} data-testid="finish-notes" />
           {error && <Alert color="red">{error}</Alert>}
           <Button size="lg" onClick={() => void save()} loading={busy} data-testid="finish-save">{running ? t('wo.saveWorkout') : t('ql.update')}</Button>
           {running && <Button variant="default" onClick={onClose}>{t('wo.keepGoing')}</Button>}

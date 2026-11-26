@@ -28,7 +28,7 @@ export function Dashboard({ today }: { today: string }) {
     const [icon, title, body, to] = r.kind === 'deload'
       ? [<IconBatteryCharging key="i" />, t('dash.deloadTitle'), r.reason === 'stall' ? t('dash.deloadStall', { name: r.exercise ?? '' }) : t('dash.deloadBody', { pct: settings.deloadPct, sets: settings.deloadSets }), '/plan']
       : r.kind === 'progress'
-        ? [<IconTrendingUp key="i" color="var(--w-info)" />, t('dash.progressTitle', { name: r.name }), t('dash.progressBody', { w: formatWeight(r.topKg, unit) }), `/progress/exercise/${r.exerciseId}`]
+        ? [<IconTrendingUp key="i" color="var(--w-info)" />, t('dash.progressTitle', { name: r.name }), (r.assist ? t('dash.progressBodyAssist', { w: formatWeight(r.topKg, unit) }) : t('dash.progressBody', { w: formatWeight(r.topKg, unit) })), `/progress/exercise/${r.exerciseId}`]
         : [<IconAlertTriangle key="i" color="var(--w-pr)" />, t('dash.limitedTitle', { name: r.name }), t('dash.limitedBody', { n: r.sets, min: r.min }), '/progress/muscles'];
     return (
       <Card key={`${r.kind}${i}`} withBorder radius="md" padding={0}>

@@ -90,3 +90,13 @@ describe('B-05 explanations', () => {
     expect(s.factors.join(' | ')).toMatch(/double progression/i);
   });
 });
+
+describe('B-04 plate field', () => {
+  it('parses weights with optional pair counts and rejects nonsense', async () => {
+    const { parsePlates, formatPlates } = await import('../../src/domain/progression');
+    expect(parsePlates('25, 20x2, 1.25 x 1, 5kg')).toEqual({ plates: [25, 20, 5, 1.25], pairs: { '20': 2, '1.25': 1 } });
+    expect(parsePlates('20, abc')).toEqual({ error: 'abc' });
+    expect(parsePlates('20x0')).toEqual({ error: '20x0' });
+    expect(formatPlates([25, 20, 5], { '20': 2 })).toBe('25, 20x2, 5');
+  });
+});

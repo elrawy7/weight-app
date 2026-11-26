@@ -264,3 +264,23 @@ export function suggest(a: SuggestArgs): Suggestion | null {
   const aim = reps.map((r) => Math.min(range.max, r + (r < range.max ? 1 : 0))).join('/');
   return mk({ kind: 'more_reps', rule: 'BR-PO-05', deltaKg: 0, snap: 'nearest', topKg: ref || undefined, message: `${fmt} – keep ${ref > 0 ? kgTxt(ref) : 'the same load'}${assist ? ' assistance' : ''}, aim for ${aim}.` });
 }
+
+/**
+ * B-04: the plates field – "25, 20x2, 1.25x1" = 25 kg plates (enough), 2 pairs of 20 kg, 1 pair of 1.25 kg.
+ * Returns the sorted plate list and pair counts, or the first token that is not understood.
+ */
+export function parsePlates(text: string): { plates: number[]; pairs: Record<string, number> } | { error: string } {
+  const plates: number[] = [];
+  const pairs: Record<string, number> = {};
+  for (const raw of text.split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean)) {
+    const m = /^(\d+(?:\.\d+)?)\s*(?:kg)?\s*(?:[x×*]\s*(\d+))?$/i.exec(raw);
+    const kg = m ? Number(m[1]) : NaN;
+    const n = m?.[2] !== undefined ? Number(m[2]) : undefined;
+    if (!m || !(kg > 0) || kg > 100 || (n !== undefined && (n < 1 || n > 20))) return { error: raw };
+    if (!plates.includes(kg)) plates.push(kg);
+    if (n !== undefined) pairs[String(kg)] = n;
+  }
+  return { plates: plates.sort((a, b) => b - a), pairs };
+}
+export const formatPlates = (plates: number[], pairs: Record<string, number> = {}) => plates.map((kg) => (pairs[String(kg)] ? `${kg}x${pairs[String(kg)]}` : String(kg))).join(', ');
+

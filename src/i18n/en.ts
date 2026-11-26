@@ -6,7 +6,7 @@ export const en = {
   'common.confirm': 'Confirm', 'common.back': 'Back', 'common.done': 'Done', 'common.remove': 'Remove', 'common.replace': 'Replace', 'common.loading': 'Loading…',
   'common.none': 'None', 'common.all': 'All', 'common.yes': 'Yes', 'common.no': 'No', 'common.min': 'min', 'common.sec': 's', 'common.kg': 'kg', 'common.lb': 'lb',
   'common.week': 'Week {n}', 'common.weekShort': 'W{n}', 'common.rpe': 'RPE {v}', 'common.sets': '{n} sets', 'common.rest': 'Rest {s}s', 'common.search': 'Search',
-  'common.notSet': 'Not set', 'common.error': 'Something went wrong', 'common.saved': 'Saved', 'common.optional': 'optional', 'common.reorder': 'Drag to reorder',
+  'common.notSet': 'Not set', 'common.error': 'Something went wrong', 'common.saved': 'Saved', 'common.saving': 'Saving…', 'common.notSaved': 'Not saved', 'common.optional': 'optional', 'common.reorder': 'Drag to reorder',
   'common.moveUp': 'Move up', 'common.moveDown': 'Move down', 'common.open': 'Open', 'common.phase': 'Phase {n}',
 
   'today.title': 'Today', 'today.noProgram': 'No active program yet', 'today.noProgramBody': 'Import your Notion plan or create a program to see today’s workout here.',
@@ -87,7 +87,7 @@ export const en = {
 
   'eq.title': 'Equipment & weight steps', 'eq.body': 'Set your gym’s real steps so + / − and suggestions match the machines (e.g. pulldown +6.5 kg).',
   'eq.default': 'Default {v} kg', 'eq.step': 'Step (kg)', 'eq.bars': 'Bars', 'eq.barbell': 'Olympic barbell (kg)', 'eq.smith': 'Smith machine bar (kg, empty = unknown)', 'eq.ez': 'EZ bar (kg)',
-  'eq.plates': 'Plates available (kg, comma-separated)', 'eq.reset': 'Use default',
+  'eq.plates': 'Plates available (kg, comma-separated)', 'eq.platesHelp': 'Add ×pairs if you have a limited number, e.g. 20x2, 10x1, 5. Without a count, enough of that plate is assumed.', 'eq.platesBad': '“{v}” is not a plate – use a weight in kg, optionally with x and the number of pairs.', 'eq.reset': 'Use default',
 
   'st.title': 'Storage', 'st.persisted': 'Persistent storage', 'st.granted': 'Granted – iOS will not clear this data under storage pressure.',
   'st.notGranted': 'Not granted – iOS may clear website data. Keep the app on your Home Screen and back up regularly.', 'st.unknown': 'Not checked yet', 'st.request': 'Ask again',
@@ -158,7 +158,9 @@ export const en = {
   'wo.type_working': 'working', 'wo.type_warmup': 'warm-up', 'wo.type_drop': 'drop', 'wo.type_failure': 'failure', 'wo.notDone': 'not done',
   'wo.seconds': 'Seconds', 'wo.secShort': '{n} s', 'wo.repsShort': 'reps', 'wo.rpe': 'RPE', 'wo.bw': 'BW',
   'wo.painPrompt': 'Knee pain after this exercise? (0–10, optional)', 'wo.painHigh': 'Pain 4+ : next time the load will not be increased. Consider the knee-friendly swap.', 'wo.painShort': 'Pain {n}',
-  'wo.sessionNote': 'Note for this workout', 'wo.minutes': 'Minutes', 'wo.distanceKm': 'Distance (km)', 'wo.incline': 'Incline %', 'wo.speed': 'Speed km/h',
+  'wo.sessionNote': 'Note for this workout', 'wo.noteSaveFailed': 'The note could not be saved. It is still on screen – it will be saved again on your next change.',
+  'wo.why': 'Why?', 'wo.whyHide': 'Hide details', 'wo.restSkipped': 'Rest skipped', 'wo.skipRest': 'Skip remaining sets',
+  'wo.replacedKept': '{name} – replaced after {n} set(s); those sets are kept', 'wo.minutes': 'Minutes', 'wo.distanceKm': 'Distance (km)', 'wo.incline': 'Incline %', 'wo.speed': 'Speed km/h',
   'wo.rounds': 'Rounds', 'wo.roundMin': 'Minutes per round', 'wo.roundsN': '{n} rounds', 'wo.cardioDoneCheck': 'Done', 'wo.cardioDone': 'Done',
   'wo.noInstructions': 'No instructions for this exercise yet.', 'wo.watchVideo': '▶ {title}',
   'wo.finishTitle': 'Finish workout', 'wo.sumSets': 'Sets', 'wo.sumVolume': 'Volume', 'wo.sumExercises': 'Exercises', 'wo.ofN': '{a}/{b}',
@@ -212,7 +214,7 @@ export const en = {
   'dash.recommended': 'Recommended', 'dash.thisWeek': 'This week', 'dash.streak': '{n}-day streak', 'dash.completion': '{done} of {total} planned workouts done',
   'dash.totalWorkouts': 'Workouts', 'dash.totalTime': 'Training time', 'dash.hours': '{h} h', 'dash.weekVolume': 'Volume this week', 'dash.musclesTrained': 'Muscles trained this week (fractional sets)',
   'dash.recentPrs': 'Recent records', 'dash.deloadTitle': 'Deload recommended', 'dash.deloadBody': 'The block is finished – train about {pct}% lighter with {sets} set fewer this week.',
-  'dash.deloadStall': '{name}: no progress in 3 workouts – a lighter week helps.', 'dash.progressTitle': 'Ready to progress: {name}', 'dash.progressBody': 'All sets hit the top of the range – next time {w}.',
+  'dash.deloadStall': '{name}: no progress in 3 workouts – a lighter week helps.', 'dash.progressTitle': 'Ready to progress: {name}', 'dash.progressBody': 'All sets hit the top of the range – next time {w}.', 'dash.progressBodyAssist': 'All sets hit the top of the range – next time {w} assistance.',
   'dash.limitedTitle': '{name} is limited this week', 'dash.limitedBody': '{n} of {min} weekly sets so far.',
   // SET-03 / PO-04
   'set.progression': 'Progression & muscle counting', 'set.strategy': 'Default progression', 'set.strategyHelp': 'Each exercise can override this on its library page.',

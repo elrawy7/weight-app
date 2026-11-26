@@ -9,11 +9,13 @@ import { formatWeight } from '../../domain/units';
 import { PageHeader } from '../../components/ui';
 import { compareSessions, historyItems, sessionDetail, type SideStats } from './historyOps';
 
-function Delta({ a, b, unit, kind }: { a: number | null; b: number | null; unit: 'kg' | 'lb'; kind: 'kg' | 'n' }) {
+/** `lowerIsBetter`: assistance (B-01) – less assistance is the improvement, so the colours swap. */
+function Delta({ a, b, unit, kind, lowerIsBetter = false }: { a: number | null; b: number | null; unit: 'kg' | 'lb'; kind: 'kg' | 'n'; lowerIsBetter?: boolean }) {
   if (a == null || b == null) return <Text fz="xs" c="dimmed">—</Text>;
   const d = Math.round((b - a) * 100) / 100;
   const txt = kind === 'kg' ? formatWeight(Math.abs(d), unit) : String(Math.abs(d));
-  return <Text fz="sm" fw={700} style={{ whiteSpace: 'nowrap' }} c={d > 0 ? 'mint' : d < 0 ? 'orange' : 'dimmed'} data-testid="compare-delta">{d > 0 ? `▲ ${txt}` : d < 0 ? `▼ ${txt}` : t('cmp.same')}</Text>;
+  const good = lowerIsBetter ? d < 0 : d > 0;
+  return <Text fz="sm" fw={700} style={{ whiteSpace: 'nowrap' }} c={d === 0 ? 'dimmed' : good ? 'mint' : 'orange'} data-testid="compare-delta" data-better={d === 0 ? 'same' : good ? 'yes' : 'no'}>{d > 0 ? `▲ ${txt}` : d < 0 ? `▼ ${txt}` : t('cmp.same')}</Text>;
 }
 
 /** One compared metric: label, then "A → B" with the change on the right. */
@@ -74,7 +76,7 @@ export function ComparePage() {
               <Card key={r.exerciseId} withBorder padding="sm" data-testid="compare-row">
                 <Text fw={700} mb={4}>{r.name}</Text>
                 <Stack gap={6}>
-                  <Metric label={t('cmp.best')} a={best(r.a, unit)} b={best(r.b, unit)} delta={<Delta a={r.a.best?.weightKg ?? null} b={r.b.best?.weightKg ?? null} unit={unit} kind="kg" />} />
+                  <Metric label={t('cmp.best')} a={best(r.a, unit)} b={best(r.b, unit)} delta={<Delta a={r.a.best?.weightKg ?? null} b={r.b.best?.weightKg ?? null} unit={unit} kind="kg" lowerIsBetter={r.loadMode === 'assist'} />} />
                   <Metric label={t('cmp.sets')} a={String(r.a.sets)} b={String(r.b.sets)} delta={<Delta a={r.a.sets} b={r.b.sets} unit={unit} kind="n" />} />
                   {(r.a.volumeKg > 0 || r.b.volumeKg > 0) && <Metric label={t('wo.sumVolume')} a={formatWeight(r.a.volumeKg, unit)} b={formatWeight(r.b.volumeKg, unit)} delta={<Delta a={r.a.volumeKg} b={r.b.volumeKg} unit={unit} kind="kg" />} />}
                   {(r.a.e1rm || r.b.e1rm) && <Metric label={t('an.e1rm')} a={r.a.e1rm ? formatWeight(r.a.e1rm, unit) : '—'} b={r.b.e1rm ? formatWeight(r.b.e1rm, unit) : '—'} delta={<Delta a={r.a.e1rm} b={r.b.e1rm} unit={unit} kind="kg" />} />}

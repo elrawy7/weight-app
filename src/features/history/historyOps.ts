@@ -105,7 +105,9 @@ export interface CompareRow { exerciseId: ID; name: string; loadMode: string; a:
 function side(d: DetailExercise): SideStats {
   const w = d.sets.filter((x) => x.completed && x.setType !== 'warmup' && !(x.reps === 0 && !x.durationSec));
   const lm = d.ex?.loadMode ?? 'none';
-  const best = w.reduce<WorkoutSet | null>((b, x) => (!b || (x.weightKg ?? 0) > (b.weightKg ?? 0) || ((x.weightKg ?? 0) === (b.weightKg ?? 0) && (x.reps ?? 0) > (b.reps ?? 0)) ? x : b), null);
+  // B-01: for an assisted exercise the best set is the one with the LEAST assistance
+  const dir = lm === 'assist' ? -1 : 1;
+  const best = w.reduce<WorkoutSet | null>((b, x) => (!b || dir * ((x.weightKg ?? 0) - (b.weightKg ?? 0)) > 0 || ((x.weightKg ?? 0) === (b.weightKg ?? 0) && (x.reps ?? 0) > (b.reps ?? 0)) ? x : b), null);
   const e = Math.max(0, ...w.map((x) => epley(x.weightKg, x.reps, lm) ?? 0));
   return { sets: w.length, best, volumeKg: d.volumeKg, e1rm: e > 0 ? e : null, cardioMin: d.se.cardio?.durationMin };
 }

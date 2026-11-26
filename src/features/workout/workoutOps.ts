@@ -374,7 +374,17 @@ async function normalizeOrder(db: WeightDB, sessionId: ID) {
   for (const [k, x] of list.entries()) if (x.orderIndex !== k + 1) await db.sessionExercises.update(x.id, { orderIndex: k + 1 });
 }
 
-export async function setExerciseNotes(db: WeightDB, seId: ID, notes: string) { await db.sessionExercises.update(seId, { notes, updatedAt: nowIso() }); }
+export async function setExerciseNotes(db: WeightDB, seId: ID, notes: string) {
+  if (notes.length > 2000) throw new WorkoutError('Notes can be up to 2000 characters.');
+  const n = await db.sessionExercises.update(seId, { notes, updatedAt: nowIso() });
+  if (!n) throw new WorkoutError('Exercise not found.');
+}
+/** A-04: the workout note, saved while typing (before Finish). */
+export async function setSessionNotes(db: WeightDB, sessionId: ID, notes: string) {
+  if (notes.length > 5000) throw new WorkoutError('Notes can be up to 5000 characters.');
+  const n = await db.sessions.update(sessionId, { notes, updatedAt: nowIso() });
+  if (!n) throw new WorkoutError('Workout not found.');
+}
 export async function setPain(db: WeightDB, seId: ID, painScore: number | null) {
   if (painScore !== null && (!Number.isInteger(painScore) || painScore < 0 || painScore > 10)) throw new WorkoutError('Pain must be 0–10.');
   await db.sessionExercises.update(seId, { painScore, updatedAt: nowIso() });

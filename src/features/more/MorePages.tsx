@@ -11,7 +11,7 @@ import { BackupIndicator } from '../../components/banners';
 import { requestPersistence, storageStatus, formatBytes, type StorageStatus } from '../settings/storage';
 import { isStandalone, speechSupported, wakeLockSupported } from '../../pwa/platform';
 import { WEEKDAYS, type ThemePref, type Weekday } from '../../db/types';
-import { STRATEGIES } from '../../domain/progression';
+import { STRATEGIES, formatPlates, parsePlates } from '../../domain/progression';
 import type { AppSettings } from '../../db/types';
 import { recomputeRecords } from '../progress/recordsOps';
 
@@ -112,6 +112,7 @@ export function EquipmentPage() {
   const db = useDb();
   const s = useSettings();
   const eq = useLiveQuery(() => db.equipment.toArray(), [db]) ?? [];
+  const [plateErr, setPlateErr] = useState<string | null>(null);
   const setOverride = (key: string, v: number | string) => {
     const o = { ...s.incrementOverrides };
     if (typeof v === 'number' && v > 0) o[key] = v; else delete o[key];
@@ -125,7 +126,8 @@ export function EquipmentPage() {
         <NumberInput label={t('eq.barbell')} min={0} max={50} decimalScale={2} value={s.barbellKg} onChange={(v) => void saveSettings(db, { barbellKg: Number(v) || 0 })} />
         <NumberInput label={t('eq.smith')} min={0} max={50} decimalScale={2} value={s.smithBarKg ?? ''} onChange={(v) => void saveSettings(db, { smithBarKg: typeof v === 'number' ? v : null })} data-testid="smith-bar" />
         <NumberInput label={t('eq.ez')} min={0} max={30} decimalScale={2} value={s.ezBarKg} onChange={(v) => void saveSettings(db, { ezBarKg: Number(v) || 0 })} />
-        <TextInput label={t('eq.plates')} defaultValue={s.plateSetKg.join(', ')} onBlur={(e) => void saveSettings(db, { plateSetKg: e.currentTarget.value.split(/[,\s]+/).map(Number).filter((n) => n > 0).sort((a, b) => b - a) })} />
+        <TextInput label={t('eq.plates')} description={t('eq.platesHelp')} defaultValue={formatPlates(s.plateSetKg, s.platePairs)} error={plateErr} data-testid="plates"
+          onBlur={(e) => { const r = parsePlates(e.currentTarget.value); if ('error' in r) { setPlateErr(t('eq.platesBad', { v: r.error })); return; } setPlateErr(null); void saveSettings(db, { plateSetKg: r.plates, platePairs: r.pairs }); }} />
         <TextInput label={t('eq.dumbbells')} description={t('eq.dumbbellsHelp')} defaultValue={s.dumbbellsKg.join(', ')} data-testid="dumbbells"
           onBlur={(e) => void saveSettings(db, { dumbbellsKg: [...new Set(e.currentTarget.value.split(/[,\s]+/).map(Number).filter((n) => n > 0))].sort((a, b) => a - b) })} />
       </Section>

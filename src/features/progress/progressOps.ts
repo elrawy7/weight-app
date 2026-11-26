@@ -8,7 +8,7 @@ import { getSettings } from '../../db/defaults';
 import * as R from '../../db/repos';
 import { suggest, isStalled } from '../../domain/progression';
 import { resolveIncrement } from '../../domain/rounding';
-import { recentPerfs, weightContext, deloadState } from '../workout/suggestionCtx';
+import { latestBodyweight, recentPerfs, weightContext, deloadState } from '../workout/suggestionCtx';
 import { parentList, parentName } from './muscleNames';
 import { performancesOf, SESSION_KEY } from './recordsOps';
 
@@ -128,7 +128,7 @@ export async function dashboard(db: WeightDB, today: ISODate): Promise<Dashboard
 
 export type Recommendation =
   | { kind: 'deload'; reason: 'planned' | 'after_block' | 'stall'; exercise?: string }
-  | { kind: 'progress'; exerciseId: ID; name: string; topKg: number }
+  | { kind: 'progress'; exerciseId: ID; name: string; topKg: number; assist?: boolean }
   | { kind: 'limited'; muscleId: string; name: string; sets: number; min: number };
 
 /** Up to `max` actionable cards (backup is added by the caller, which owns the backup state). */
@@ -153,16 +153,17 @@ export async function recommendations(db: WeightDB, today: ISODate, max = 3): Pr
   const ids = [...latestTarget.keys()];
   const exs = new Map((await db.exercises.bulkGet(ids)).filter((e): e is Exercise => !!e).map((e) => [e.id, e]));
   const recent = await recentPerfs(db, ids, { id: '__none__', localDate: addDays(today, 1), startedAt: null });
+  const bodyweightKg = (await latestBodyweight(db)) ?? undefined;
   const ready: Recommendation[] = [];
   for (const id of ids) {
     const ex = exs.get(id);
     if (!ex) continue;
     const r = recent.get(id) ?? [];
-    if (!dl?.active && ex.mechanic === 'compound' && isStalled(r) && !out.some((o) => o.kind === 'deload')) out.push({ kind: 'deload', reason: 'stall', exercise: ex.name });
+    if (!dl?.active && ex.mechanic === 'compound' && isStalled(r, ex.loadMode, bodyweightKg) && !out.some((o) => o.kind === 'deload')) out.push({ kind: 'deload', reason: 'stall', exercise: ex.name });
     const inc = resolveIncrement(ex, settings.incrementOverrides);
     const s = suggest({ exercise: { status: ex.status, loadMode: ex.loadMode, strategy: ex.strategy }, recent: r, targetReps: latestTarget.get(id)?.reps, today, weights: weightContext(ex, inc, settings),
-      defaultStrategy: settings.defaultStrategy, incrementSteps: settings.incrementSteps });
-    if (s?.kind === 'increase' && s.topKg) ready.push({ kind: 'progress', exerciseId: id, name: ex.name, topKg: s.topKg });
+      defaultStrategy: settings.defaultStrategy, incrementSteps: settings.incrementSteps, bodyweightKg });
+    if (s?.kind === 'increase' && s.topKg != null && (s.topKg > 0 || ex.loadMode === 'assist')) ready.push({ kind: 'progress', exerciseId: id, name: ex.name, topKg: s.topKg, assist: ex.loadMode === 'assist' });
   }
   out.push(...ready.slice(0, 2));
 

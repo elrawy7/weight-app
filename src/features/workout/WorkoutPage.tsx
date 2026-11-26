@@ -21,7 +21,8 @@ import { Scale } from '../today/QuickLogSheet';
 import type { Exercise, ExerciseVideo, LegacyPerformance, WorkoutProgram, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from '../../db/types';
 import { suggest, type RecentPerf } from '../../domain/progression';
 import { epley } from '../../domain/e1rm';
-import { alternativeNames, deloadState, recentPerfs, weightContext } from './suggestionCtx';
+import { alternativeNames, deloadState, latestBodyweight, recentPerfs, weightContext } from './suggestionCtx';
+import { useAutosave } from './autosave';
 import * as W from './workoutOps';
 import { RestTimerPanel, useNow, mmss } from './RestTimer';
 import { ExerciseHistorySheet } from './ExerciseHistory';
@@ -30,7 +31,7 @@ import { prevList, setLabel } from './format';
 import { unlockAudio } from './alerts';
 import { FinishSheet } from './FinishSheet';
 
-interface Row { se: WorkoutSessionExercise; ex: Exercise | undefined; sets: WorkoutSet[]; video?: ExerciseVideo; muscles: string[]; legacy?: LegacyPerformance; best: W.Best | null; recent: RecentPerf[]; alt?: string; deloadDismissed: boolean }
+interface Row { se: WorkoutSessionExercise; ex: Exercise | undefined; sets: WorkoutSet[]; video?: ExerciseVideo; muscles: string[]; legacy?: LegacyPerformance; best: W.Best | null; recent: RecentPerf[]; alt?: string; deloadDismissed: boolean; bodyweightKg: number | null }
 
 const err = (e: unknown) => notifications.show({ color: 'red', message: e instanceof Error ? e.message : t('common.error') });
 
@@ -40,7 +41,8 @@ function livePrToast(row: Row, set: WorkoutSet, ghost: Ghost, unit: 'kg' | 'lb')
   const ex = row.ex!;
   if (!best) return; // BR-PR-06 baseline
   const w = set.weightKg ?? ghost.weightKg ?? 0, r = set.reps ?? ghost.reps ?? 0;
-  const others = row.sets.filter((x) => x.id !== set.id && x.completed === 1 && x.setType !== 'warmup');
+  if (r === 0 && ex.tracking !== 'duration') return; // A-05: a failed attempt is never a record
+  const others = row.sets.filter((x) => x.id !== set.id && x.completed === 1 && x.setType !== 'warmup' && !W.isFailedAttempt(x));
   const loaded = ex.loadMode === 'total' || ex.loadMode === 'per_hand' || ex.loadMode === 'stack';
   let text: string | null = null;
   if (loaded) {
@@ -84,12 +86,13 @@ export function WorkoutPage() {
     const recents = await recentPerfs(db, exIds, s);
     const alts = await alternativeNames(db, exIds);
     const dismissed = ((await db.kv.get('deloadDismissed'))?.value as Record<string, string> | undefined) ?? {};
+    const bodyweightKg = await latestBodyweight(db);
     const rows: Row[] = ses.map((se, i) => ({
       se, ex: exs.get(se.exerciseId), sets: sets.filter((x) => x.sessionExerciseId === se.id).sort((a, b) => a.orderIndex - b.orderIndex),
       video: videos.find((v) => v.exerciseId === se.exerciseId && v.isPrimary) ?? videos.find((v) => v.exerciseId === se.exerciseId),
       muscles: mus.filter((m) => m.exerciseId === se.exerciseId && m.role === 'primary').map((m) => groups.get(m.muscleGroupId) ?? m.muscleGroupId),
       legacy: legacy.find((l) => l.exerciseId === se.exerciseId), best: bests[i], recent: recents.get(se.exerciseId) ?? [], alt: alts.get(se.exerciseId),
-      deloadDismissed: !!dismissed[se.exerciseId] && dismissed[se.exerciseId] === (recents.get(se.exerciseId)?.[0]?.localDate ?? ''),
+      deloadDismissed: !!dismissed[se.exerciseId] && dismissed[se.exerciseId] === (recents.get(se.exerciseId)?.[0]?.localDate ?? ''), bodyweightKg,
     }));
     return { s, rows, tpl, program, warmChecked, warmEx } as const;
   }, [db, id]);
@@ -120,6 +123,8 @@ export function WorkoutPage() {
   }
   const { rows, tpl, warmChecked, warmEx } = data;
   const visible = rows.filter((r) => r.se.status !== 'replaced');
+  // A-06: a replaced exercise whose sets were already done stays visible (read-only) – those sets are kept
+  const replacedKept = rows.filter((r) => r.se.status === 'replaced' && r.sets.some((x) => x.completed === 1));
   const stale = W.isStale(s);
   const title = tpl?.name ?? t('wo.emptyName');
   const dateText = formatDate(s.localDate, { weekday: 'short', day: 'numeric', month: 'short' });
@@ -130,13 +135,15 @@ export function WorkoutPage() {
       const measure = row.ex?.tracking === 'duration' ? 'duration' : 'reps';
       // PR-02 (≤ 300 ms): judge the PR from the values being saved before the slower status writes
       const before = await db.sets.get(set.id);
-      const willComplete = !!before && !before.completed && before.setType !== 'warmup' && (measure === 'duration' ? (before.durationSec ?? ghost.durationSec) : (before.reps ?? ghost.reps)) != null;
+      let willComplete = !!before && !before.completed && before.setType !== 'warmup';
+      if (willComplete) { try { W.completedValues(row.ex, before!, ghost, measure); } catch { willComplete = false; } } // no toast for a set that will be rejected
       if (willComplete && row.ex) livePrToast(row, before!, ghost, settings.weightUnit);
       const r = await W.toggleSetComplete(db, set.id, ghost, measure);
-      if (r.completed && r.startRest && live && s.status === 'active') await W.startRest(db, { sessionId: s.id, exerciseName: row.ex?.name ?? '', durationSec: r.restSec || settings.defaultRestSec });
+      if (r.completed && r.startRest && live && s.status === 'active') await W.startRest(db, { sessionId: s.id, exerciseName: row.ex?.name ?? '', durationSec: r.restSec || settings.defaultRestSec, setId: set.id });
       // WO-09: inside a superset round, jump to the next exercise of the group (no rest yet)
       if (r.completed && !r.startRest && row.se.supersetGroup && set.setType !== 'warmup') {
-        const next = rows.find((x) => x.se.supersetGroup === row.se.supersetGroup && x.se.orderIndex > row.se.orderIndex && x.se.status !== 'skipped' && x.se.status !== 'replaced');
+        const next = rows.find((x) => x.se.supersetGroup === row.se.supersetGroup && x.se.orderIndex > row.se.orderIndex && x.se.status !== 'skipped' && x.se.status !== 'replaced' && !x.se.skippedRemaining)
+          ?? rows.find((x) => x.se.supersetGroup === row.se.supersetGroup && x.se.id !== row.se.id && x.se.status !== 'skipped' && x.se.status !== 'replaced' && !x.se.skippedRemaining && x.sets.some((y) => !y.completed && y.setType !== 'warmup'));
         if (next) window.setTimeout(() => document.querySelector(`[data-se="${next.se.id}"] [data-done="0"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
       }
     } catch (e) { err(e); }
@@ -211,6 +218,13 @@ export function WorkoutPage() {
             onReplace={() => setPicker({ mode: 'replace', seId: row.se.id, exclude: row.se.exerciseId })} />
         ))}
 
+        {replacedKept.map((row) => (
+          <Card key={row.se.id} withBorder radius="lg" padding="sm" data-testid="wo-replaced-kept" data-exercise={row.se.exerciseId} style={{ opacity: 0.75 }}>
+            <Text fz="sm" fw={600}>{t('wo.replacedKept', { name: row.ex?.name ?? row.se.exerciseId, n: row.sets.filter((x) => x.completed === 1).length })}</Text>
+            <Text fz="sm" c="dimmed">{prevList(row.sets.filter((x) => x.completed === 1 && x.setType !== 'warmup').map((x) => ({ weightKg: x.weightKg, reps: x.reps, setType: x.setType, durationSec: x.durationSec ?? null })), settings.weightUnit)}</Text>
+          </Card>
+        ))}
+
         <Button variant="default" size="lg" leftSection={<IconPlus />} onClick={() => setPicker({ mode: 'add' })} data-testid="wo-add-exercise">{t('wo.addExercise')}</Button>
         {running ? (
           <>
@@ -249,18 +263,23 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
   const { se, ex, sets } = row;
   const [noteOpen, setNoteOpen] = useState(!!se.notes);
   const [note, setNote] = useState(se.notes);
-  useEffect(() => setNote(se.notes), [se.notes]);
+  const [noteFocused, setNoteFocused] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
+  // A-04: autosave while typing; an update from the database never overwrites text that is being typed
+  useEffect(() => { if (!noteFocused) setNote(se.notes); }, [se.notes, noteFocused]);
+  const noteSave = useAutosave(note, se.notes, (v) => W.setExerciseNotes(db, se.id, v));
   const unit = settings.weightUnit;
   const incKg = ex ? resolveIncrement(ex, settings.incrementOverrides) : 2.5;
   const weightInc = unit === 'kg' ? incKg || 1 : Math.max(1, Math.round(kgToLb(incKg || 1)));
   const prev = se.snapshot?.previous;
   const skipped = se.status === 'skipped';
+  const restSkipped = !!se.skippedRemaining; // A-06: completed sets kept, remaining sets skipped
   const running = session.status === 'active' || session.status === 'paused';
   const weights = ex ? weightContext(ex, incKg, settings) : { incrementKg: incKg };
   const sug = running && ex ? suggest({
     exercise: { status: ex.status, loadMode: ex.loadMode, strategy: ex.strategy, isMain: ex.mechanic === 'compound' }, recent: row.recent, targetReps: se.snapshot?.targetReps, targetRpe,
     today: session.localDate, weights, defaultStrategy: settings.defaultStrategy, incrementSteps: settings.incrementSteps, deload: deloadState(program, session.localDate),
-    deloadPct: settings.deloadPct, deloadSets: settings.deloadSets, alternativeName: row.alt, noDeload: row.deloadDismissed,
+    deloadPct: settings.deloadPct, deloadSets: settings.deloadSets, alternativeName: row.alt, noDeload: row.deloadDismissed, bodyweightKg: row.bodyweightKg ?? undefined,
   }) : null;
   const working = sets.filter((x) => x.setType !== 'warmup');
   const warm = sets.filter((x) => x.setType === 'warmup');
@@ -282,7 +301,7 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
           </Group>
           {ex?.nameAr && <Text fz="sm" c="dimmed" className="w-arabic" dir="rtl" style={{ alignSelf: 'flex-start' }}>{ex.nameAr}</Text>}
           {row.muscles.length > 0 && <Text fz="xs" c="dimmed">{row.muscles.join(', ')}</Text>}
-          <Group gap={6}>{ex?.status === 'unresolved' && <Badge color="amber" size="sm">{t('library.unresolved')}</Badge>}<KneeBadge tags={ex?.tags ?? []} />{skipped && <Badge color="gray" size="sm" data-testid="wo-skipped">{t('wo.skipped')}</Badge>}</Group>
+          <Group gap={6}>{ex?.status === 'unresolved' && <Badge color="amber" size="sm">{t('library.unresolved')}</Badge>}<KneeBadge tags={ex?.tags ?? []} />{skipped && <Badge color="gray" size="sm" data-testid="wo-skipped">{t('wo.skipped')}</Badge>}{restSkipped && <Badge color="gray" size="sm" data-testid="wo-rest-skipped">{t('wo.restSkipped')}</Badge>}</Group>
         </Stack>
         <Group gap={0} wrap="nowrap">
           {videoUrl && <ActionIcon component="a" href={videoUrl} target="_blank" rel="noopener noreferrer" aria-label={t('wo.video')} data-testid="wo-video"><IconBrandYoutube /></ActionIcon>}
@@ -293,7 +312,7 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
               <Menu.Item leftSection={<IconHistory size={16} />} onClick={onHistory} data-testid="wo-ex-history">{t('wo.history')}</Menu.Item>
               <Menu.Item leftSection={<IconNote size={16} />} onClick={() => setNoteOpen(true)}>{t('wo.addNote')}</Menu.Item>
               <Menu.Item leftSection={<IconReplace size={16} />} onClick={onReplace} data-testid="wo-ex-replace">{t('common.replace')}</Menu.Item>
-              <Menu.Item leftSection={<IconPlayerSkipForward size={16} />} onClick={() => void W.skipExercise(db, se.id, !skipped)} data-testid="wo-ex-skip">{skipped ? t('wo.unskip') : t('wo.skip')}</Menu.Item>
+              <Menu.Item leftSection={<IconPlayerSkipForward size={16} />} onClick={() => void W.skipExercise(db, se.id, !(skipped || restSkipped)).catch(err)} data-testid="wo-ex-skip">{skipped || restSkipped ? t('wo.unskip') : working.some((x) => x.completed) ? t('wo.skipRest') : t('wo.skip')}</Menu.Item>
               <Menu.Item leftSection={<IconArrowUp size={16} />} disabled={index === 0} onClick={() => void W.moveExercise(db, session.id, se.id, -1)} data-testid="wo-ex-up">{t('common.moveUp')}</Menu.Item>
               <Menu.Item leftSection={<IconArrowDown size={16} />} disabled={index === count - 1} onClick={() => void W.moveExercise(db, session.id, se.id, 1)} data-testid="wo-ex-down">{t('common.moveDown')}</Menu.Item>
             </Menu.Dropdown>
@@ -322,11 +341,14 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
         </Card>
       )}
 
-      {sug && !skipped && working.some((x) => !x.completed) && (
+      {sug && !skipped && !restSkipped && working.some((x) => !x.completed) && (
         // PO-03: hint in the info colour with ✦ – inputs keep their prefill until "Use suggestion"
         <Alert variant="light" color="info" icon={<Text fw={800} c="var(--w-info)" aria-hidden>✦</Text>} mt={6} p="xs" data-testid="wo-suggestion" data-kind={sug.kind}>
           <Text fz="sm">{sug.message}</Text>
+          {/* B-05: what the suggestion is based on */}
+          {whyOpen && <Stack gap={0} mt={4} data-testid="wo-why-list" id={`why-${se.id}`}>{sug.factors.map((f, i) => <Text key={i} fz="xs" c="dimmed">• {f}</Text>)}</Stack>}
           <Group gap={6} mt={4}>
+            {sug.factors.length > 0 && <Button size="xs" variant="subtle" color="info" onClick={() => setWhyOpen((o) => !o)} aria-expanded={whyOpen} aria-controls={`why-${se.id}`} data-testid="wo-why">{whyOpen ? t('wo.whyHide') : t('wo.why')}</Button>}
             {(sug.deltaKg !== 0 || sug.repsTarget || sug.setsDelta) && (
               <Button size="xs" variant="light" color="info" onClick={() => void W.applySuggestion(db, se.id, sug, weights).catch(err)} data-testid="wo-use-suggestion">{t('wo.useSuggestion')}</Button>
             )}
@@ -341,13 +363,14 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
       {!skipped && se.cardio && <CardioFields se={se} ex={ex} />}
       {!skipped && !se.cardio && (
         <Stack gap={6} mt="xs">
-          {sets.map((set) => {
+          {sets.filter((set) => !restSkipped || set.completed === 1).map((set) => {
             const isWarm = set.setType === 'warmup';
             const wi = isWarm ? warm.indexOf(set) : working.indexOf(set);
             const aligned = isWarm ? { shown: prev?.warmups[wi] ?? null, prefill: prev?.warmups[wi] ?? null } : W.alignedPrevious(prev, wi);
             const ghost: Ghost = { weightKg: aligned.prefill?.weightKg ?? null, reps: aligned.prefill?.reps ?? null, durationSec: aligned.prefill?.durationSec ?? null };
             const badge = isWarm ? t('wo.typeW') : set.setType === 'drop' ? t('wo.typeD') : set.setType === 'failure' ? t('wo.typeF') : String(wi + 1);
-            const pr = !!row.best && set.completed === 1 && !isWarm && showWeight && (set.weightKg ?? 0) > row.best.maxWeightKg;
+            const loaded = ex?.loadMode === 'total' || ex?.loadMode === 'per_hand' || ex?.loadMode === 'stack'; // more assistance is never a PR
+            const pr = !!row.best && set.completed === 1 && !isWarm && loaded && (set.reps ?? 0) > 0 && (set.weightKg ?? 0) > row.best.maxWeightKg;
             return (
               <SetLine key={set.id} set={set} badge={badge} prevText={aligned.shown ? t('wo.prev', { v: setLabel(aligned.shown, unit, false) }) : t('wo.prevNone')} ghost={ghost} measure={measure}
                 showWeight={showWeight} unitLabel={unit === 'kg' ? t('common.kg') : t('common.lb')} weightInc={weightInc}
@@ -355,10 +378,10 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
                 onPatch={(p) => void W.updateSet(db, set.id, p).catch(err)} onToggle={() => void onToggle(row, set, ghost)} onDelete={() => void onDelete(set)} />
             );
           })}
-          <Group gap="xs" grow>
+          {!restSkipped && <Group gap="xs" grow>
             <Button variant="light" leftSection={<IconPlus size={18} />} onClick={() => void W.addSet(db, se.id)} data-testid="wo-add-set">{t('wo.addSet')}</Button>
             <Button variant="subtle" onClick={() => void W.addSet(db, se.id, 'warmup')} data-testid="wo-add-warmup">{t('wo.addWarmup')}</Button>
-          </Group>
+          </Group>}
         </Stack>
       )}
 
@@ -371,7 +394,9 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
       )}
 
       <Collapse in={noteOpen}>
-        <Textarea mt="xs" label={t('wo.sessionNote')} autosize minRows={1} value={note} onChange={(e) => setNote(e.currentTarget.value)} onBlur={() => void W.setExerciseNotes(db, se.id, note)} data-testid="wo-ex-note" />
+        <Textarea mt="xs" label={t('wo.sessionNote')} autosize minRows={1} value={note} maxLength={2000}
+          description={noteSave.state === 'saving' ? t('common.saving') : noteSave.state === 'saved' ? t('common.saved') : noteSave.state === 'error' ? t('common.notSaved') : undefined}
+          onChange={(e) => setNote(e.currentTarget.value)} onFocus={() => setNoteFocused(true)} onBlur={() => { setNoteFocused(false); void noteSave.flush(); }} data-testid="wo-ex-note" />
       </Collapse>
     </Card>
   );
