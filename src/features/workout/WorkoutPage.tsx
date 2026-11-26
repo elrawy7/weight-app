@@ -1,14 +1,14 @@
 /** Active workout / edit a logged workout (WO-01…17, TMR-01…03). Every change is written to IndexedDB immediately. */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ActionIcon, Alert, Anchor, Badge, Button, Card, Checkbox, Collapse, Drawer, Group, Menu, NumberInput, Stack, Text, Textarea, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconAlertCircle, IconArrowDown, IconArrowUp, IconBrandYoutube, IconDots, IconHistory, IconInfoCircle, IconPlayerPause, IconPlayerPlay, IconPlus,
-  IconReplace, IconPlayerSkipForward, IconNote, IconFlame, IconCheck,
+  IconReplace, IconPlayerSkipForward, IconNote, IconFlame, IconCheck, IconChevronLeft, IconLayoutList, IconLayoutRows, IconCircleCheckFilled, IconSearch,
 } from '@tabler/icons-react';
-import { useDb, useSettings } from '../../app/db';
+import { saveSettings, useDb, useSettings } from '../../app/db';
 import { t } from '../../i18n';
 import { formatDate, nowIso } from '../../domain/dates';
 import { resolveIncrement } from '../../domain/rounding';
@@ -24,7 +24,7 @@ import { epley } from '../../domain/e1rm';
 import { alternativeNames, deloadState, latestBodyweight, recentPerfs, weightContext } from './suggestionCtx';
 import { useAutosave } from './autosave';
 import * as W from './workoutOps';
-import { RestTimerPanel, useNow, mmss } from './RestTimer';
+import { RestTimerPanel, useHeightVar, useNow, mmss, type NextUp } from './RestTimer';
 import { ExerciseHistorySheet } from './ExerciseHistory';
 import { SetLine, type Ghost } from './SetLine';
 import { prevList, setLabel } from './format';
@@ -65,7 +65,7 @@ export function WorkoutPage() {
   const [infoOf, setInfoOf] = useState<Row | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
-  const [warmOpen, setWarmOpen] = useState(true);
+  const [warmOpen, setWarmOpen] = useState<boolean | null>(null); // null = default for the layout (open in expanded, closed in compact)
 
   const data = useLiveQuery(async () => {
     const s = await db.sessions.get(id);
@@ -116,6 +116,10 @@ export function WorkoutPage() {
   const wakeTip = useLiveQuery(async () => (await db.kv.get('wakeTipShown'))?.value === true, [db]);
 
   const targetRpe = useMemo(() => (data?.program && s?.programWeek ? data.program.weeks.find((w) => w.week === s.programWeek)?.rpe : undefined), [data, s]);
+  const compact = settings.workoutDensity !== 'expanded';
+  const barRef = useRef<HTMLDivElement>(null);
+  useHeightVar(barRef, '--w-wbar-h', !!data?.s);
+  useHeightVar(barRef, '--w-toast-offset', !!data?.s); // D-05: toasts appear below the bar, never over Pause/Finish
 
   if (!data) return null;
   if (!s || s.status === 'discarded') {
@@ -160,17 +164,75 @@ export function WorkoutPage() {
     await db.kv.put({ key: `warmup:${s.localDate}`, value: next });
   };
 
+  // D-03 progress: exercises done / total and working sets done / planned (skipped exercises and skipped remainders excluded)
+  const prog = visible.filter((r) => r.se.status !== 'skipped').reduce((a, r) => {
+    const w = r.sets.filter((x) => x.setType !== 'warmup');
+    const done = w.filter((x) => x.completed).length;
+    const planned = r.se.cardio ? 1 : r.se.skippedRemaining ? done : w.length;
+    const doneHere = r.se.cardio ? (r.se.status === 'completed' ? 1 : 0) : done;
+    return { e: a.e + (r.se.status === 'completed' || (planned > 0 && doneHere >= planned) ? 1 : 0), et: a.et + 1, s: a.s + doneHere, st: a.st + planned };
+  }, { e: 0, et: 0, s: 0, st: 0 });
+  const isDone = (r: Row) => r.se.status === 'skipped' || r.se.status === 'completed' || (!r.se.cardio && r.sets.some((x) => x.setType !== 'warmup') && r.sets.filter((x) => x.setType !== 'warmup').every((x) => x.completed));
+  const current = visible.find((r) => !isDone(r));
+  // D-06: what comes after the rest
+  const nextUp: NextUp | null = (() => {
+    if (!current) return null;
+    const w = current.sets.filter((x) => x.setType !== 'warmup');
+    const i = w.findIndex((x) => !x.completed);
+    if (current.se.cardio || i < 0) return { name: current.ex?.name ?? '', set: 1 };
+    const g = W.alignedPrevious(current.se.snapshot?.previous, i).prefill;
+    const target = g ? setLabel(g, settings.weightUnit, false) : current.se.snapshot?.targetReps ? t('wo.reps', { r: current.se.snapshot.targetReps }) : undefined;
+    return { name: current.ex?.name ?? '', set: i + 1, target };
+  })();
+  const goTo = (seId: string) => document.querySelector(`[data-se="${seId}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const toggleDensity = () => void saveSettings(db, { workoutDensity: compact ? 'expanded' : 'compact' });
+
   const header = (
-    <PageHeader back="/" title={title}
-      subtitle={<span data-testid="wo-subtitle">{dateText}{s.programWeek ? ` · ${t('common.week', { n: s.programWeek })}` : ''}{targetRpe ? ` · ${t('common.rpe', { v: targetRpe })}` : ''}</span>}
-      right={running ? (
-        <Group gap={4} wrap="nowrap">
-          {live && <Text ff="monospace" fw={700} data-testid="wo-clock" aria-label={t('wo.elapsed')}>{mmss(Math.floor(W.elapsedMs(s, now) / 1000))}</Text>}
-          {live && (s.status === 'active'
-            ? <ActionIcon variant="light" aria-label={t('wo.pause')} onClick={() => void W.pauseSession(db, s.id, true)} data-testid="wo-pause"><IconPlayerPause /></ActionIcon>
-            : <ActionIcon variant="filled" aria-label={t('wo.resume')} onClick={() => void W.pauseSession(db, s.id, false)} data-testid="wo-resume"><IconPlayerPlay /></ActionIcon>)}
+    <div className="w-wbar" ref={barRef} data-testid="wo-bar">
+      <Group justify="space-between" wrap="nowrap" gap={4}>
+        <Group gap={0} wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+          <ActionIcon aria-label={t('common.back')} onClick={() => nav('/')} ml={-10}><IconChevronLeft size={26} /></ActionIcon>
+          <div style={{ minWidth: 0 }}>
+            <Title order={1} fz={19} lh={1.2} lineClamp={1}>{title}</Title>
+            <Text fz="xs" c="dimmed" lineClamp={1} data-testid="wo-subtitle">{dateText}{s.programWeek ? ` · ${t('common.week', { n: s.programWeek })}` : ''}{targetRpe ? ` · ${t('common.rpe', { v: targetRpe })}` : ''}</Text>
+            <Text fz="xs" fw={600} lineClamp={1} data-testid="wo-progress" data-ex={`${prog.e}/${prog.et}`} data-sets={`${prog.s}/${prog.st}`}>{t('wo.progressLine', prog)}</Text>
+          </div>
         </Group>
-      ) : <Badge variant="light" color="mint" data-testid="wo-logged">{t('wo.logged')}</Badge>} />
+        {running ? (
+          <Group gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
+            {live && <Text ff="monospace" fw={700} fz="sm" data-testid="wo-clock" aria-label={t('wo.elapsed')} role="timer">{mmss(Math.floor(W.elapsedMs(s, now) / 1000))}</Text>}
+            {live && (s.status === 'active'
+              ? <ActionIcon variant="subtle" aria-label={t('wo.pause')} onClick={() => void W.pauseSession(db, s.id, true)} data-testid="wo-pause"><IconPlayerPause /></ActionIcon>
+              : <ActionIcon variant="filled" aria-label={t('wo.resume')} onClick={() => void W.pauseSession(db, s.id, false)} data-testid="wo-resume"><IconPlayerPlay /></ActionIcon>)}
+            <Button size="sm" mih={44} px="sm" leftSection={<IconCheck size={16} />} onClick={() => setFinishOpen(true)} data-testid="wo-finish-top">{t('wo.finishShort')}</Button>
+          </Group>
+        ) : <Badge variant="light" color="mint" data-testid="wo-logged" style={{ flexShrink: 0 }}>{t('wo.logged')}</Badge>}
+      </Group>
+      {visible.length > 0 && (
+        <Group gap={4} wrap="nowrap" align="center">
+          {/* D-02: exercise navigator – current exercise highlighted, tap to jump */}
+          <nav className="w-nav-strip" aria-label={t('wo.navigator')} style={{ flex: 1, minWidth: 0 }} data-testid="wo-nav">
+            {visible.map((r, i) => {
+              const w = r.sets.filter((x) => x.setType !== 'warmup');
+              const done = r.se.cardio ? (r.se.status === 'completed' ? 1 : 0) : w.filter((x) => x.completed).length;
+              const total = r.se.cardio ? 1 : w.length;
+              const state = r.se.status === 'skipped' ? 'skipped' : isDone(r) ? 'done' : r === current ? 'current' : 'todo';
+              return (
+                <button key={r.se.id} type="button" className="w-nav-chip" data-state={state} aria-current={r === current ? 'step' : undefined} onClick={() => goTo(r.se.id)}
+                  aria-label={t('wo.navItem', { name: r.ex?.name ?? r.se.exerciseId, done, total })} data-testid="wo-nav-item" data-se={undefined} data-target={r.se.id}>
+                  {state === 'done' ? <IconCircleCheckFilled size={16} color="var(--mantine-color-mint-5)" aria-hidden /> : <Text span fz="xs" fw={700} aria-hidden>{i + 1}</Text>}
+                  <span className="w-nav-name" aria-hidden>{r.ex?.name ?? r.se.exerciseId}</span>
+                  <Text span fz="xs" c="dimmed" aria-hidden>{done}/{total}</Text>
+                </button>
+              );
+            })}
+          </nav>
+          <ActionIcon variant="subtle" onClick={toggleDensity} aria-label={compact ? t('wo.expandedView') : t('wo.compactView')} data-testid="wo-density" data-density={compact ? 'compact' : 'expanded'} style={{ flexShrink: 0 }}>
+            {compact ? <IconLayoutRows /> : <IconLayoutList />}
+          </ActionIcon>
+        </Group>
+      )}
+    </div>
   );
 
   return (
@@ -191,15 +253,15 @@ export function WorkoutPage() {
         {live && settings.keepAwake && !wakeLockSupported() && !wakeTip && (
           <Alert variant="light" withCloseButton closeButtonLabel={t('common.close')} onClose={() => void db.kv.put({ key: 'wakeTipShown', value: true })} data-testid="wake-tip">{t('wo.wakeTip')}</Alert>
         )}
-        <RestTimerPanel sessionId={s.id} />
 
-        {running && tpl && tpl.warmup.length > 0 && (
+        {running && tpl && tpl.warmup.length > 0 && (!compact || warmChecked.length < tpl.warmup.length) && (
           <Card withBorder padding="xs" radius="md" data-testid="wo-warmup">
-            <Group justify="space-between" onClick={() => setWarmOpen((o) => !o)} style={{ cursor: 'pointer' }} mih={44} px={4}>
+            <Group justify="space-between" onClick={() => setWarmOpen((o) => !(o ?? !compact))} style={{ cursor: 'pointer' }} mih={44} px={4} role="button" tabIndex={0} aria-expanded={warmOpen ?? !compact} data-testid="wo-warmup-toggle"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWarmOpen((o) => !(o ?? !compact)); } }}>
               <Group gap={6}><IconFlame size={18} /><Text fw={600}>{t('today.warmup')}</Text></Group>
               <Text fz="xs" c="dimmed">{t('today.warmupDone', { done: tpl.warmup.filter((w) => warmChecked.includes(w.id)).length, total: tpl.warmup.length })}</Text>
             </Group>
-            <Collapse in={warmOpen}>
+            <Collapse in={warmOpen ?? !compact}>
               <Stack gap={0}>
                 {tpl.warmup.map((w, i) => (
                   <Checkbox key={w.id} size="md" py={8} px={4} checked={warmChecked.includes(w.id)} onChange={() => void toggleWarm(w.id)} data-testid="warmup-item"
@@ -213,7 +275,7 @@ export function WorkoutPage() {
 
         {visible.length === 0 && <EmptyState icon={<IconPlus />} title={t('wo.noExercises')} body={t('wo.noExercisesBody')} />}
         {visible.map((row, i) => (
-          <ExerciseBlock key={row.se.id} row={row} session={s} program={data.program} index={i} count={visible.length} targetRpe={targetRpe}
+          <ExerciseBlock key={row.se.id} row={row} session={s} program={data.program} index={i} count={visible.length} targetRpe={targetRpe} compact={compact}
             onToggle={onToggle} onDelete={onDelete} onHistory={() => setHistoryOf(row)} onInfo={() => setInfoOf(row)}
             onReplace={() => setPicker({ mode: 'replace', seId: row.se.id, exclude: row.se.exerciseId })} />
         ))}
@@ -239,6 +301,7 @@ export function WorkoutPage() {
           </>
         )}
       </Stack>
+      {running && <RestTimerPanel sessionId={s.id} next={nextUp} />}
 
       <ExercisePicker opened={picker !== null} title={picker?.mode === 'replace' ? t('wo.replaceWith') : t('wo.addExercise')} exclude={picker?.mode === 'replace' ? [picker.exclude] : []}
         onClose={() => setPicker(null)}
@@ -254,8 +317,8 @@ export function WorkoutPage() {
   );
 }
 
-function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggle, onDelete, onHistory, onInfo, onReplace }: {
-  row: Row; session: WorkoutSession; program?: WorkoutProgram; index: number; count: number; targetRpe?: string;
+function ExerciseBlock({ row, session, program, index, count, targetRpe, compact, onToggle, onDelete, onHistory, onInfo, onReplace }: {
+  row: Row; session: WorkoutSession; program?: WorkoutProgram; index: number; count: number; targetRpe?: string; compact: boolean;
   onToggle: (row: Row, set: WorkoutSet, ghost: Ghost) => Promise<void>; onDelete: (set: WorkoutSet) => Promise<void>; onHistory: () => void; onInfo: () => void; onReplace: () => void;
 }) {
   const db = useDb();
@@ -289,22 +352,27 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
   const showWeight = !(ex && (ex.loadMode === 'none' || ex.loadMode === 'band' || (ex.loadMode === 'bodyweight' && ex.tracking !== 'weight_reps')));
   const snap = se.snapshot ?? {};
   const targets = [snap.targetSets ? t('common.sets', { n: snap.targetSets }) : null, snap.targetReps ? (se.cardio ? snap.targetReps : t('wo.reps', { r: snap.targetReps })) : null, snap.restSec && !se.cardio ? t('common.rest', { s: snap.restSec }) : null].filter(Boolean).join(' · ');
-  const videoUrl = row.video?.url && (row.video.status === 'verified' || row.video.status === 'user') ? row.video.url : ex ? youtubeSearchUrl(ex.name) : null;
+  // D-04: a verified / your own video when there is one; otherwise an honest YouTube search (never an invented link)
+  const verified = !!row.video?.url && (row.video.status === 'verified' || row.video.status === 'user');
+  const videoUrl = verified ? row.video!.url : ex ? youtubeSearchUrl(ex.name) : null;
+  const formLabel = verified ? t('wo.watchForm') : t('wo.findForm');
+  const formAria = verified ? t('wo.watchFormAria', { name: ex?.name ?? '' }) : t('wo.findFormAria', { name: ex?.name ?? '' });
+  const lastLine = prev ? `${t('wo.lastTime', { date: formatDate(prev.localDate, { weekday: 'short', day: 'numeric', month: 'short' }) })}${prev.templateName ? ` · ${prev.templateName}` : ''}: ` : null;
 
   return (
-    <Card withBorder radius="lg" padding="sm" data-testid="wo-exercise" data-se={se.id} data-exercise={se.exerciseId} data-status={se.status} style={skipped ? { opacity: 0.6 } : undefined}>
+    <Card withBorder radius="lg" padding={compact ? 'xs' : 'sm'} data-testid="wo-exercise" data-se={se.id} data-exercise={se.exerciseId} data-status={se.status} data-density={compact ? 'compact' : 'expanded'} style={skipped ? { opacity: 0.6 } : undefined}>
       <Group justify="space-between" align="flex-start" wrap="nowrap" gap={4}>
-        <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-          <Group gap={6}>
-            {se.supersetGroup && <Badge variant="outline" size="sm">{t('today.superset', { g: se.supersetGroup })}</Badge>}
-            <Title order={4} lineClamp={2} data-testid="wo-ex-name">{ex?.name ?? se.exerciseId}</Title>
+        <Stack gap={compact ? 0 : 2} style={{ minWidth: 0, flex: 1 }}>
+          <Group gap={6} wrap={compact ? 'nowrap' : 'wrap'}>
+            {se.supersetGroup && <Badge variant="outline" size="sm" style={{ flexShrink: 0 }}>{t('today.superset', { g: se.supersetGroup })}</Badge>}
+            <Title order={4} fz={compact ? 17 : undefined} lineClamp={compact ? 1 : 2} data-testid="wo-ex-name">{ex?.name ?? se.exerciseId}</Title>
           </Group>
-          {ex?.nameAr && <Text fz="sm" c="dimmed" className="w-arabic" dir="rtl" style={{ alignSelf: 'flex-start' }}>{ex.nameAr}</Text>}
-          {row.muscles.length > 0 && <Text fz="xs" c="dimmed">{row.muscles.join(', ')}</Text>}
+          {!compact && ex?.nameAr && <Text fz="sm" c="dimmed" className="w-arabic" dir="rtl" style={{ alignSelf: 'flex-start' }}>{ex.nameAr}</Text>}
+          {!compact && row.muscles.length > 0 && <Text fz="xs" c="dimmed">{row.muscles.join(', ')}</Text>}
           <Group gap={6}>{ex?.status === 'unresolved' && <Badge color="amber" size="sm">{t('library.unresolved')}</Badge>}<KneeBadge tags={ex?.tags ?? []} />{skipped && <Badge color="gray" size="sm" data-testid="wo-skipped">{t('wo.skipped')}</Badge>}{restSkipped && <Badge color="gray" size="sm" data-testid="wo-rest-skipped">{t('wo.restSkipped')}</Badge>}</Group>
         </Stack>
         <Group gap={0} wrap="nowrap">
-          {videoUrl && <ActionIcon component="a" href={videoUrl} target="_blank" rel="noopener noreferrer" aria-label={t('wo.video')} data-testid="wo-video"><IconBrandYoutube /></ActionIcon>}
+          {videoUrl && compact && <ActionIcon component="a" href={videoUrl} target="_blank" rel="noopener noreferrer" aria-label={formAria} data-testid="wo-video" data-verified={verified ? '1' : '0'}>{verified ? <IconBrandYoutube /> : <IconSearch />}</ActionIcon>}
           <Menu position="bottom-end" withinPortal>
             <Menu.Target><ActionIcon aria-label={t('wo.exerciseMenu', { name: ex?.name ?? '' })} data-testid="wo-ex-menu"><IconDots /></ActionIcon></Menu.Target>
             <Menu.Dropdown>
@@ -320,11 +388,21 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
         </Group>
       </Group>
 
-      {targets && <Text fz="sm" mt={4} data-testid="wo-targets">{targets}</Text>}
-      {snap.templateNotes && <Text fz="xs" c="dimmed">{snap.templateNotes}</Text>}
-      {ex?.personalNotes && <Text fz="xs" c="dimmed" data-testid="wo-personal-note">{t('wo.yourNote', { note: ex.personalNotes })}</Text>}
+      {videoUrl && !compact && (
+        <Button component="a" href={videoUrl} target="_blank" rel="noopener noreferrer" variant="light" size="sm" mih={44} mt={6} leftSection={verified ? <IconBrandYoutube size={18} /> : <IconSearch size={18} />}
+          aria-label={formAria} data-testid="wo-video" data-verified={verified ? '1' : '0'}>{formLabel}</Button>
+      )}
+      {targets && <Text fz={compact ? 'xs' : 'sm'} mt={compact ? 0 : 4} c={compact ? 'dimmed' : undefined} data-testid="wo-targets">{targets}</Text>}
+      {snap.templateNotes && <Text fz="xs" c="dimmed" lineClamp={compact ? 1 : undefined}>{snap.templateNotes}</Text>}
+      {ex?.personalNotes && <Text fz="xs" c="dimmed" lineClamp={compact ? 1 : undefined} data-testid="wo-personal-note">{t('wo.yourNote', { note: ex.personalNotes })}</Text>}
 
-      {!se.cardio && (
+      {!se.cardio && compact && (
+        <Text fz="xs" mt={2} lineClamp={2} data-testid="wo-last">
+          {prev ? <><Text span fw={600} fz="xs">{lastLine}</Text><span data-testid="wo-last-sets">{prevList(prev.sets, unit)}</span>{prev.painScore != null && prev.painScore >= 4 && <Text span fz="xs" c="orange"> · {t('wo.lastPain', { n: prev.painScore })}</Text>}</>
+            : <Text span fz="xs" fw={600} data-testid="wo-first-time">{t('wo.firstTime')}</Text>}
+        </Text>
+      )}
+      {!se.cardio && !compact && (
         <Card withBorder={false} padding={6} radius="sm" mt={6} bg="var(--mantine-color-default-hover)" data-testid="wo-last">
           {prev ? (
             <>
@@ -343,17 +421,24 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
 
       {sug && !skipped && !restSkipped && working.some((x) => !x.completed) && (
         // PO-03: hint in the info colour with ✦ – inputs keep their prefill until "Use suggestion"
-        <Alert variant="light" color="info" icon={<Text fw={800} c="var(--w-info)" aria-hidden>✦</Text>} mt={6} p="xs" data-testid="wo-suggestion" data-kind={sug.kind}>
-          <Text fz="sm">{sug.message}</Text>
+        <Alert variant="light" color="info" icon={compact ? undefined : <Text fw={800} c="var(--w-info)" aria-hidden>✦</Text>} mt={6} p={compact ? 6 : 'xs'} data-testid="wo-suggestion" data-kind={sug.kind}>
+          {(() => {
+            const msg = <Text fz="sm" lineClamp={compact && !whyOpen ? 2 : undefined} style={{ flex: 1, minWidth: 0 }}>{compact && <Text span fw={800} c="var(--w-info)" aria-hidden>✦ </Text>}{sug.message}</Text>;
+            const buttons = (
+              <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+                {sug.factors.length > 0 && <Button size="xs" mih={44} px={8} variant="subtle" color="info" onClick={() => setWhyOpen((o) => !o)} aria-expanded={whyOpen} aria-controls={`why-${se.id}`} data-testid="wo-why">{whyOpen ? t('wo.whyHide') : t('wo.why')}</Button>}
+                {(sug.deltaKg !== 0 || sug.repsTarget || sug.setsDelta) && (
+                  <Button size="xs" mih={44} px={8} variant="light" color="info" onClick={() => void W.applySuggestion(db, se.id, sug, weights).catch(err)} data-testid="wo-use-suggestion">{compact ? t('wo.useShort') : t('wo.useSuggestion')}</Button>
+                )}
+              </Group>
+            );
+            return compact ? <Group gap={4} wrap="nowrap" align="center">{msg}{buttons}</Group> : <>{msg}<Group mt={4}>{buttons}</Group></>;
+          })()}
           {/* B-05: what the suggestion is based on */}
           {whyOpen && <Stack gap={0} mt={4} data-testid="wo-why-list" id={`why-${se.id}`}>{sug.factors.map((f, i) => <Text key={i} fz="xs" c="dimmed">• {f}</Text>)}</Stack>}
-          <Group gap={6} mt={4}>
-            {sug.factors.length > 0 && <Button size="xs" variant="subtle" color="info" onClick={() => setWhyOpen((o) => !o)} aria-expanded={whyOpen} aria-controls={`why-${se.id}`} data-testid="wo-why">{whyOpen ? t('wo.whyHide') : t('wo.why')}</Button>}
-            {(sug.deltaKg !== 0 || sug.repsTarget || sug.setsDelta) && (
-              <Button size="xs" variant="light" color="info" onClick={() => void W.applySuggestion(db, se.id, sug, weights).catch(err)} data-testid="wo-use-suggestion">{t('wo.useSuggestion')}</Button>
-            )}
+          <Group gap={6} mt={sug.kind === 'deload' ? 4 : 0}>
             {sug.kind === 'deload' && (
-              <Button size="xs" variant="subtle" color="gray" data-testid="wo-dismiss-deload"
+              <Button size="xs" mih={44} variant="subtle" color="gray" data-testid="wo-dismiss-deload"
                 onClick={() => void db.kv.get('deloadDismissed').then((k) => db.kv.put({ key: 'deloadDismissed', value: { ...((k?.value as Record<string, string>) ?? {}), [se.exerciseId]: row.recent[0]?.localDate ?? '' } }))}>{t('wo.dismiss')}</Button>
             )}
           </Group>
@@ -362,7 +447,14 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
 
       {!skipped && se.cardio && <CardioFields se={se} ex={ex} />}
       {!skipped && !se.cardio && (
-        <Stack gap={6} mt="xs">
+        <Stack gap={compact ? 4 : 6} mt={compact ? 6 : 'xs'}>
+          {compact && sets.length > 0 && (
+            <Group wrap="nowrap" gap={4} px={4} aria-hidden data-testid="wo-cols">
+              <Text fz={10} c="dimmed" w={44} ta="center">{t('wo.colSet')}</Text>
+              {showWeight && <Text fz={10} c="dimmed" w={150} ta="center">{unit === 'kg' ? t('common.kg') : t('common.lb')}</Text>}
+              <Text fz={10} c="dimmed" w={showWeight ? 52 : 96} ta="center">{measure === 'duration' ? t('common.sec') : t('wo.colReps')}</Text>
+            </Group>
+          )}
           {sets.filter((set) => !restSkipped || set.completed === 1).map((set) => {
             const isWarm = set.setType === 'warmup';
             const wi = isWarm ? warm.indexOf(set) : working.indexOf(set);
@@ -374,13 +466,13 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, onToggl
             return (
               <SetLine key={set.id} set={set} badge={badge} prevText={aligned.shown ? t('wo.prev', { v: setLabel(aligned.shown, unit, false) }) : t('wo.prevNone')} ghost={ghost} measure={measure}
                 showWeight={showWeight} unitLabel={unit === 'kg' ? t('common.kg') : t('common.lb')} weightInc={weightInc}
-                toDisplay={(kg) => toDisplay(kg, unit)} fromDisplay={(v) => fromDisplay(v, unit)} showRpe={settings.showRpe} pr={pr}
+                toDisplay={(kg) => toDisplay(kg, unit)} fromDisplay={(v) => fromDisplay(v, unit)} showRpe={settings.showRpe} pr={pr} compact={compact}
                 onPatch={(p) => void W.updateSet(db, set.id, p).catch(err)} onToggle={() => void onToggle(row, set, ghost)} onDelete={() => void onDelete(set)} />
             );
           })}
           {!restSkipped && <Group gap="xs" grow>
-            <Button variant="light" leftSection={<IconPlus size={18} />} onClick={() => void W.addSet(db, se.id)} data-testid="wo-add-set">{t('wo.addSet')}</Button>
-            <Button variant="subtle" onClick={() => void W.addSet(db, se.id, 'warmup')} data-testid="wo-add-warmup">{t('wo.addWarmup')}</Button>
+            <Button variant={compact ? 'subtle' : 'light'} mih={44} leftSection={<IconPlus size={18} />} onClick={() => void W.addSet(db, se.id)} data-testid="wo-add-set">{t('wo.addSet')}</Button>
+            <Button variant="subtle" mih={44} onClick={() => void W.addSet(db, se.id, 'warmup')} data-testid="wo-add-warmup">{t('wo.addWarmup')}</Button>
           </Group>}
         </Stack>
       )}

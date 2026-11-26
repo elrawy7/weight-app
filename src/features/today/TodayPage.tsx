@@ -11,7 +11,7 @@ import { phaseOf, planForDate, setsForWeek, weekOf, type DayPlan } from '../../d
 import { ConfirmSheet, EmptyState, ExerciseCard, KneeBadge, Section } from '../../components/ui';
 import { QuickLogSheet } from './QuickLogSheet';
 import { markDone, undoQuickLog, updateQuickLog } from './quickLog';
-import { InstallBanner } from '../../components/banners';
+import { BackupIndicator, InstallBanner } from '../../components/banners';
 import { Dashboard } from './Dashboard';
 import type { Exercise, WorkoutTemplate } from '../../db/types';
 import * as R from '../../db/repos';
@@ -92,7 +92,6 @@ export function TodayPage() {
     return (
       <>
         {header}
-        <InstallBanner />
         <EmptyState icon={<IconBarbell />} title={t('today.noProgram')} body={t('today.noProgramBody')}
           action={<Group><Button leftSection={<IconFileImport size={18} />} onClick={() => nav('/import')}>{t('today.import')}</Button><Button variant="default" leftSection={<IconPlus size={18} />} onClick={() => nav('/programs')}>{t('today.createProgram')}</Button></Group>} />
         {/* FR-PROG-07: an empty workout works without any program */}
@@ -100,6 +99,7 @@ export function TodayPage() {
           ? <Button fullWidth size="lg" leftSection={<IconPlayerPlay />} onClick={() => nav(`/workout/${data.active!.id}`)} data-testid="active-continue">{t('wo.continue')}</Button>
           : today <= realToday && <Button fullWidth size="lg" variant="light" leftSection={<IconPlayerPlay />} data-testid="start-empty"
             onClick={() => void startWorkout(db, { week: null, date: today, today: realToday }).then((s) => nav(`/workout/${s.id}`)).catch((e: unknown) => notifications.show({ color: 'red', message: e instanceof Error ? e.message : t('common.error') }))}>{t('wo.startEmpty')}</Button>}
+        <InstallBanner />
       </>
     );
   }
@@ -202,14 +202,13 @@ export function TodayPage() {
           ))}
         </Card>
 
-        {isToday ? <Dashboard today={realToday} /> : null}
+        {isToday && <BackupIndicator compact />}
         {unresolved > 0 && (
           <Alert color="amber" variant="light" icon={<IconAlertCircle />} title={t('today.unresolved', { n: unresolved })} data-testid="unresolved-banner">
             <Text fz="sm">{t('today.unresolvedBody')}</Text>
             <Button size="sm" mt="xs" variant="light" color="amber" onClick={() => nav('/migration')}>{t('today.resolve')}</Button>
           </Alert>
         )}
-        <InstallBanner />
         {template && template.warmup.length > 0 && (
           <Section title={t('today.warmup')} right={<Text fz="xs" c="dimmed">{t('today.warmupDone', { done: template.warmup.filter((w) => checked.includes(w.id)).length, total: template.warmup.length })}</Text>}>
             <Card withBorder padding="xs" radius="md">
@@ -233,12 +232,15 @@ export function TodayPage() {
           </Section>
         )}
 
+        {isToday ? <Dashboard today={realToday} /> : null}
         <Section title={t('today.upcoming')} right={<Button size="xs" variant="subtle" onClick={() => nav('/plan')} data-testid="full-plan-link">{t('day.fullPlan')}</Button>}>
           <Card withBorder padding="xs" radius="md">
             {upcoming.map(({ date, plan: p }) => <UpcomingRow key={date} date={date} plan={p} name={p.kind === 'planned' ? tplMap.get(p.templateId)?.name : undefined}
               done={p.kind === 'planned' && doneDates.has(`${date}|${p.templateId}`)} onOpen={() => go(date)} />)}
           </Card>
         </Section>
+        {/* one-time install guide: last, so it never pushes the primary action down */}
+        <InstallBanner />
       </Stack>
       <QuickLogSheet opened={qlOpen !== null} title={qlOpen === 'edit' ? t('ql.editTitle', { name: template?.name ?? '' }) : t('ql.title', { name: template?.name ?? '' })}
         submitLabel={qlOpen === 'edit' ? t('ql.update') : t('ql.save')} onClose={() => setQlOpen(null)} onSubmit={qlOpen === 'edit' ? saveEdit : saveNew}

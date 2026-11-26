@@ -7,9 +7,7 @@ import { useDb, useSettings } from '../../app/db';
 import { t } from '../../i18n';
 import { formatDate } from '../../domain/dates';
 import { formatWeight } from '../../domain/units';
-import { BackupIndicator } from '../../components/banners';
 import { Section, StatCard } from '../../components/ui';
-import { backupState } from '../backup/backup';
 import { dashboard, recommendations, type Recommendation } from '../progress/progressOps';
 import { prText } from '../progress/prText';
 
@@ -18,9 +16,7 @@ export function Dashboard({ today }: { today: string }) {
   const settings = useSettings();
   const nav = useNavigate();
   const d = useLiveQuery(() => dashboard(db, today), [db, today, settings.weekStartsOn, settings.secondaryMuscleWeight]);
-  const hasData = useLiveQuery(async () => (await db.sessions.count()) + (await db.programs.count()) > 0, [db]) ?? false;
-  const backupDue = backupState(settings.lastBackupAt, settings.backupReminderDays, hasData) !== 'ok';
-  const recs = useLiveQuery(() => recommendations(db, today, backupDue ? 2 : 3), [db, today, backupDue, settings.minWeeklySets, settings.defaultStrategy]) ?? [];
+  const recs = useLiveQuery(() => recommendations(db, today, 3), [db, today, settings.minWeeklySets, settings.defaultStrategy]) ?? [];
   if (!d) return null;
   const unit = settings.weightUnit;
   const pct = d.week.scheduled ? (100 * d.week.done) / d.week.scheduled : 0;
@@ -40,11 +36,18 @@ export function Dashboard({ today }: { today: string }) {
   };
   return (
     <Stack gap="sm" data-testid="dashboard">
-      {(backupDue || recs.length > 0) && (
-        <Section title={t('dash.recommended')}>
-          <Stack gap={6} data-testid="recommendations">
-            <BackupIndicator compact />
-            {recs.map(rec)}
+      {/* D-05: recent → stats → recommendations (below today's workout and its instructions) */}
+      {d.recentPrs.length > 0 && (
+        <Section title={t('dash.recentPrs')}>
+          <Stack gap={6} data-testid="dash-prs">
+            {d.recentPrs.map((r) => (
+              <Card key={r.id} withBorder radius="md" padding={0}>
+                <UnstyledButton onClick={() => nav(`/progress/exercise/${r.exerciseId}`)} p="sm" w="100%" mih={48}>
+                  <Group justify="space-between" wrap="nowrap"><Group gap="sm" wrap="nowrap"><IconTrophy size={18} color="var(--w-pr)" /><Text fw={600} fz="sm" lineClamp={1}>{r.name}</Text></Group>
+                    <Text fz="sm" fw={700}>{prText({ type: r.type, value: r.value, weightKg: r.weightKg }, unit)} <Text span fz="xs" c="dimmed" fw={400}>{formatDate(r.achievedAt)}</Text></Text></Group>
+                </UnstyledButton>
+              </Card>
+            ))}
           </Stack>
         </Section>
       )}
@@ -67,17 +70,10 @@ export function Dashboard({ today }: { today: string }) {
           </UnstyledButton>
         )}
       </Card>
-      {d.recentPrs.length > 0 && (
-        <Section title={t('dash.recentPrs')}>
-          <Stack gap={6} data-testid="dash-prs">
-            {d.recentPrs.map((r) => (
-              <Card key={r.id} withBorder radius="md" padding={0}>
-                <UnstyledButton onClick={() => nav(`/progress/exercise/${r.exerciseId}`)} p="sm" w="100%" mih={48}>
-                  <Group justify="space-between" wrap="nowrap"><Group gap="sm" wrap="nowrap"><IconTrophy size={18} color="var(--w-pr)" /><Text fw={600} fz="sm" lineClamp={1}>{r.name}</Text></Group>
-                    <Text fz="sm" fw={700}>{prText({ type: r.type, value: r.value, weightKg: r.weightKg }, unit)} <Text span fz="xs" c="dimmed" fw={400}>{formatDate(r.achievedAt)}</Text></Text></Group>
-                </UnstyledButton>
-              </Card>
-            ))}
+      {recs.length > 0 && (
+        <Section title={t('dash.recommended')}>
+          <Stack gap={6} data-testid="recommendations">
+            {recs.map(rec)}
           </Stack>
         </Section>
       )}

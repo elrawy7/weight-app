@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ActionIcon, Button, Card, Group, Progress, Stack, Text, UnstyledButton } from '@mantine/core';
+import { ActionIcon, Button, Card, Group, Progress, Text, UnstyledButton } from '@mantine/core';
 import { IconPlayerPause, IconPlayerPlay, IconPlayerSkipForward, IconRotateClockwise, IconClock } from '@tabler/icons-react';
 import { useDb, useSettings } from '../../app/db';
 import { t } from '../../i18n';
@@ -68,43 +68,83 @@ export function RestTimerHost() {
   );
 }
 
-/** Full timer with controls (TMR-01 AC2), shown at the top of the workout screen. */
-export function RestTimerPanel({ sessionId }: { sessionId: string }) {
+/** Publishes an element's height as a CSS variable while mounted (layout offsets for sticky/fixed bars). */
+export function useHeightVar(ref: React.RefObject<HTMLElement | null>, name: string, on = true) {
+  useEffect(() => {
+    const el = ref.current;
+    const root = document.documentElement;
+    if (!el || !on) { root.style.removeProperty(name); return; }
+    const set = () => root.style.setProperty(name, `${Math.round(el.getBoundingClientRect().height)}px`);
+    set();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(set) : null;
+    ro?.observe(el);
+    return () => { ro?.disconnect(); root.style.removeProperty(name); };
+  }, [ref, name, on]);
+}
+
+export interface NextUp { name: string; set: number; target?: string }
+
+/**
+ * TMR-01 AC2 / D-06: rest timer docked at the bottom, above the tab bar, so the controls are in thumb reach and the
+ * exercise list stays visible above it. Shows what comes next. A spacer keeps the end of the list reachable.
+ */
+export function RestTimerPanel({ sessionId, next }: { sessionId: string; next?: NextUp | null }) {
   const db = useDb();
   const timer = useRestTimer();
   const now = useNow(!!timer && !timer.pausedAt);
-  if (!timer || timer.sessionId !== sessionId) return null;
+  const ref = useRef<HTMLDivElement>(null);
+  const shown = !!timer && timer.sessionId === sessionId;
+  useHeightVar(ref, '--w-dock-h', shown);
+  if (!timer || !shown) return null;
   const left = restRemaining(timer, now);
   const act = (a: Parameters<typeof adjustRest>[1]) => void adjustRest(db, a);
+  const nextLine = next ? <Text fz="xs" c="dimmed" lineClamp={1} data-testid="rest-next">{t('tmr.next', { name: next.name, n: next.set })}{next.target ? ` · ${next.target}` : ''}</Text> : null;
+  const spacer = <div aria-hidden style={{ height: 'var(--w-dock-h, 96px)' }} />;
   if (left <= 0) {
     return (
-      <Card withBorder radius="lg" padding="sm" data-testid="rest-panel" style={{ position: 'sticky', top: 'calc(var(--w-safe-top) + 4px)', zIndex: 150 }} bg="var(--mantine-color-mint-light)">
-        <Group justify="space-between" wrap="nowrap">
-          <Text fw={700} role="status" data-testid="rest-finished">{left > -3 ? t('tmr.finished') : t('tmr.finishedAgo', { t: mmss(-left) })}</Text>
-          <Button variant="light" onClick={() => act('skip')} data-testid="rest-dismiss">{t('tmr.dismiss')}</Button>
-        </Group>
-      </Card>
+      <>
+        {spacer}
+        <div className="w-dock" ref={ref}>
+          <Card withBorder radius="lg" padding="xs" data-testid="rest-panel" bg="var(--mantine-color-mint-light)">
+            <Group justify="space-between" wrap="nowrap" gap={6}>
+              <div style={{ minWidth: 0 }}>
+                <Text fw={700} role="status" data-testid="rest-finished">{left > -3 ? t('tmr.finished') : t('tmr.finishedAgo', { t: mmss(-left) })}</Text>
+                {nextLine}
+              </div>
+              <Button variant="light" onClick={() => act('skip')} data-testid="rest-dismiss" style={{ flexShrink: 0 }}>{t('tmr.dismiss')}</Button>
+            </Group>
+          </Card>
+        </div>
+      </>
     );
   }
+  const pct = timer.durationSec ? (100 * left) / timer.durationSec : 0;
   return (
-    <Card withBorder radius="lg" padding="sm" role="timer" aria-live="off" aria-label={t('ui.restLeft', { s: left })} data-testid="rest-panel"
-      style={{ position: 'sticky', top: 'calc(var(--w-safe-top) + 4px)', zIndex: 150 }} bg="var(--mantine-color-body)">
-      <Stack gap={6}>
-        <Group justify="space-between" wrap="nowrap">
-          <Text fw={700} lineClamp={1}>{t('tmr.rest', { name: timer.exerciseName })}</Text>
-          <Text fw={800} fz={26} ff="monospace" data-testid="rest-left">{mmss(left)}</Text>
-        </Group>
-        <Progress value={timer.durationSec ? (100 * left) / timer.durationSec : 0} size="md" radius="xl" />
-        <Group justify="space-between" wrap="nowrap" gap={4}>
-          <Button variant="default" px="xs" onClick={() => act('minus')} data-testid="rest-minus">{t('tmr.minus')}</Button>
-          <Button variant="default" px="xs" onClick={() => act('plus')} data-testid="rest-plus">{t('tmr.plus')}</Button>
-          {timer.pausedAt
-            ? <ActionIcon variant="light" aria-label={t('tmr.resume')} onClick={() => act('resume')} data-testid="rest-resume"><IconPlayerPlay /></ActionIcon>
-            : <ActionIcon variant="light" aria-label={t('ui.pause')} onClick={() => act('pause')} data-testid="rest-pause"><IconPlayerPause /></ActionIcon>}
-          <ActionIcon variant="light" aria-label={t('tmr.restart')} onClick={() => act('restart')} data-testid="rest-restart"><IconRotateClockwise /></ActionIcon>
-          <ActionIcon variant="light" aria-label={t('ui.skip')} onClick={() => act('skip')} data-testid="rest-skip"><IconPlayerSkipForward /></ActionIcon>
-        </Group>
-      </Stack>
-    </Card>
+    <>
+      {spacer}
+      <div className="w-dock" ref={ref}>
+        <Card withBorder radius="lg" padding="xs" role="timer" aria-live="off" aria-label={t('ui.restLeft', { s: left })} data-testid="rest-panel" bg="var(--mantine-color-body)">
+          <Group justify="space-between" wrap="nowrap" gap={4}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <Group gap={8} wrap="nowrap" align="baseline">
+                <Text fw={800} fz={26} ff="monospace" lh={1.1} data-testid="rest-left" c={timer.pausedAt ? 'dimmed' : undefined}>{mmss(left)}</Text>
+                <Text fz="xs" c="dimmed" lineClamp={2}>{timer.pausedAt ? t('tmr.paused') : t('tmr.rest', { name: timer.exerciseName })}</Text>
+              </Group>
+            </div>
+            <Group gap={0} wrap="nowrap" style={{ flexShrink: 0 }}>
+              <ActionIcon variant="subtle" aria-label={t('tmr.minus')} onClick={() => act('minus')} data-testid="rest-minus"><Text fz="xs" fw={700}>−15</Text></ActionIcon>
+              <ActionIcon variant="subtle" aria-label={t('tmr.plus')} onClick={() => act('plus')} data-testid="rest-plus"><Text fz="xs" fw={700}>+15</Text></ActionIcon>
+              {timer.pausedAt
+                ? <ActionIcon variant="light" aria-label={t('tmr.resume')} onClick={() => act('resume')} data-testid="rest-resume"><IconPlayerPlay /></ActionIcon>
+                : <ActionIcon variant="subtle" aria-label={t('ui.pause')} onClick={() => act('pause')} data-testid="rest-pause"><IconPlayerPause /></ActionIcon>}
+              <ActionIcon variant="subtle" aria-label={t('tmr.restart')} onClick={() => act('restart')} data-testid="rest-restart"><IconRotateClockwise /></ActionIcon>
+              <ActionIcon variant="light" aria-label={t('ui.skip')} onClick={() => act('skip')} data-testid="rest-skip"><IconPlayerSkipForward /></ActionIcon>
+            </Group>
+          </Group>
+          {nextLine}
+          <Progress value={pct} size={4} radius="xl" mt={4} aria-hidden />
+        </Card>
+      </div>
+    </>
   );
 }

@@ -1,8 +1,6 @@
 /** WO-10 AC2: summary before saving (duration, sets, volume, PRs, incomplete exercises, pain) + knee / energy / note. */
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useNavigate } from 'react-router-dom';
-import { notifications } from '@mantine/notifications';
 import { Alert, Badge, Button, Drawer, Group, NumberInput, ScrollArea, SimpleGrid, Stack, Text, Textarea } from '@mantine/core';
 import { useDb, useSettings } from '../../app/db';
 import { t } from '../../i18n';
@@ -17,7 +15,6 @@ import { useAutosave } from './autosave';
 export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: { opened: boolean; onClose: () => void; session: WorkoutSession; live: boolean; stale: boolean; onSaved: () => void }) {
   const db = useDb();
   const settings = useSettings();
-  const nav = useNavigate();
   const running = session.status === 'active' || session.status === 'paused';
   const info = useLiveQuery(async () => (opened ? { sum: await W.summarize(db, session.id), prs: await W.sessionPRs(db, session.id) } : null), [db, session.id, opened]);
   const [knee, setKnee] = useState<number | null>(null);
@@ -46,12 +43,7 @@ export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: 
       if (running) await W.finishSession(db, session.id, { ...extra, endedAt: stale && session.lastActivityAt ? session.lastActivityAt : undefined });
       else await W.updateSummary(db, session.id, extra);
       onSaved();
-      // BAK-03 AC1: a PR session just saved → backup reminder banner
-      if (running && info?.prs.length) {
-        notifications.show({ id: 'pr-backup', color: 'amber', autoClose: 8000, message: (
-          <Group justify="space-between" wrap="nowrap"><Text fz="sm" style={{ flex: 1 }}>{t('wo.prBackup')}</Text>
-            <Button size="xs" variant="light" color="amber" style={{ flexShrink: 0 }} onClick={() => { notifications.hide('pr-backup'); nav('/backup'); }} data-testid="pr-backup">{t('wo.backupNow')}</Button></Group>) });
-      }
+      // BAK-03 AC1 / D-05: the backup reminder on Today now says when new records are not backed up yet (no toast over the screen)
     } catch (e) { setError(e instanceof Error ? e.message : t('common.error')); } finally { setBusy(false); }
   };
   const sum = info?.sum;

@@ -162,6 +162,8 @@ export interface AppSettings extends Stamped {
   dumbbellsKg: number[];
   /** B-04: optional number of PAIRS of each plate (key = kg as text). Missing = enough of that plate. */
   platePairs?: Record<string, number>;
+  /** D-01: workout screen layout – compact (one line per set) or expanded (steppers + details). */
+  workoutDensity: 'compact' | 'expanded';
 }
 export interface BackupMetadata { id: ID; createdAt: ISOTime; appVersion: string; schemaVersion: number; counts: Record<string, number>; sha256: string; includesPhotos: boolean; kind: 'manual' | 'auto_snapshot' | 'pre_restore'; fileName?: string }
 export interface MigrationDecision { provisionalId: ID; mappedTo: ID | null; decidedAt: ISOTime; affectedSets: number; affectedRows: number }

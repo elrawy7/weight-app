@@ -15,7 +15,7 @@ export function defaultSettings(): AppSettings {
     plateSetKg: [25, 20, 15, 10, 5, 2.5, 1.25], barbellKg: 20, smithBarKg: null, ezBarKg: 10,
     incrementOverrides: {},
     secondaryMuscleWeight: 0.5, minWeeklySets: 8, defaultStrategy: 'double_progression', incrementSteps: 1, e1rmFormula: 'epley', deloadPct: 10, deloadSets: 1,
-    dumbbellsKg: DEFAULT_DUMBBELLS, createdAt: t, updatedAt: t,
+    dumbbellsKg: DEFAULT_DUMBBELLS, workoutDensity: 'compact', createdAt: t, updatedAt: t,
   };
 }
 
