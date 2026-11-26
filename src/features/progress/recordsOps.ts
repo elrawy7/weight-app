@@ -16,14 +16,22 @@ export interface PerfOptions { includeSessionId?: ID }
 export async function performancesOf(db: WeightDB, exerciseIds: ID[] | null, o: PerfOptions = {}): Promise<Performance[]> {
   const ses = exerciseIds ? await db.sessionExercises.where('exerciseId').anyOf(exerciseIds).toArray() : await db.sessionExercises.toArray();
   const sessions = new Map((await db.sessions.bulkGet([...new Set(ses.map((x) => x.sessionId))])).filter((s): s is WorkoutSession => !!s).map((s) => [s.id, s]));
-  const keep = ses.filter((se) => { const s = sessions.get(se.sessionId); return s && (s.status === 'completed' || s.id === o.includeSessionId) && se.status !== 'replaced' && se.status !== 'skipped'; });
+  // A-06 / BR-SES-11: completed sets are facts – they count whatever happened to the exercise afterwards
+  const keep = ses.filter((se) => { const s = sessions.get(se.sessionId); return s && (s.status === 'completed' || s.id === o.includeSessionId); });
   const sets = keep.length ? await db.sets.where('sessionExerciseId').anyOf(keep.map((x) => x.id)).toArray() : [];
   const bySe = new Map<ID, typeof sets>();
-  for (const x of sets) if (x.completed === 1) bySe.set(x.sessionExerciseId, [...(bySe.get(x.sessionExerciseId) ?? []), x]);
+  const rows = new Map<ID, number>();
+  for (const x of sets) {
+    if (x.setType !== 'warmup') rows.set(x.sessionExerciseId, (rows.get(x.sessionExerciseId) ?? 0) + 1);
+    if (x.completed === 1) bySe.set(x.sessionExerciseId, [...(bySe.get(x.sessionExerciseId) ?? []), x]);
+  }
   return keep.map((se) => {
     const s = sessions.get(se.sessionId)!;
+    const done = (bySe.get(se.id) ?? []).filter((x) => x.setType !== 'warmup').length;
     return {
       sessionId: s.id, localDate: s.localDate, startedAt: s.startedAt, exerciseId: se.exerciseId, painScore: se.painScore ?? null,
+      // B-02: planned = working rows, except where the rest was skipped/replaced – then still all rows (incomplete)
+      plannedWorking: se.status === 'replaced' ? done : (rows.get(se.id) ?? done),
       sets: (bySe.get(se.id) ?? []).sort((a, b) => a.orderIndex - b.orderIndex).map((x) => ({ setId: x.id, weightKg: x.weightKg, reps: x.reps, durationSec: x.durationSec ?? null, setType: x.setType, rpe: x.rpe })),
       cardio: se.cardio && se.status === 'completed' ? se.cardio : null,
     };
@@ -54,6 +62,13 @@ export async function sessionVolumes(db: WeightDB, o: PerfOptions = {}) {
   return [...vol.values()];
 }
 
+/** A-03: exercises whose records must be recomputed; written in the same transaction as the change that needs it. */
+export const DIRTY_KEY = 'recordsDirty';
+export async function markRecordsDirty(db: WeightDB, ids: ID[]): Promise<void> {
+  const cur = ((await db.kv.get(DIRTY_KEY))?.value as ID[] | undefined) ?? [];
+  await db.kv.put({ key: DIRTY_KEY, value: [...new Set([...cur, ...ids])] });
+}
+
 /** BR-PR-05: rebuild the stored PRs of the given exercises (all when null) and the session-volume PRs. */
 export async function recomputeRecords(db: WeightDB, exerciseIds: ID[] | null = null): Promise<void> {
   const settings = await getSettings(db);
@@ -70,6 +85,10 @@ export async function recomputeRecords(db: WeightDB, exerciseIds: ID[] | null = 
     await db.personalRecords.where('exerciseId').equals(SESSION_KEY).delete();
     await db.personalRecords.bulkPut([...rows, ...sessionRows]);
     await db.kv.put({ key: 'recordsVersion', value: RECORDS_VERSION });
+    // clear the dirty marker for what was just rebuilt
+    const dirty = ((await db.kv.get(DIRTY_KEY))?.value as ID[] | undefined) ?? [];
+    const left = exerciseIds ? dirty.filter((id) => !exerciseIds.includes(id)) : [];
+    if (left.length) await db.kv.put({ key: DIRTY_KEY, value: left }); else await db.kv.delete(DIRTY_KEY);
   });
 }
 
@@ -93,9 +112,23 @@ export async function purgeDiscarded(db: WeightDB, now = Date.now()): Promise<nu
   return old.length;
 }
 
-/** Startup maintenance: purge old discarded sessions; (re)build PRs when missing or after an import/restore. */
-export async function maintenance(db: WeightDB): Promise<void> {
-  await purgeDiscarded(db);
+/**
+ * Startup maintenance & repair (A-03): purge old discarded sessions; drop a rest timer whose workout is no longer
+ * running; finish any records recompute that was interrupted; (re)build PRs when missing or after an import/restore.
+ * Returns what it repaired (for diagnostics and tests).
+ */
+export async function maintenance(db: WeightDB): Promise<{ purged: number; staleTimer: boolean; recomputed: 'none' | 'dirty' | 'all' }> {
+  const purged = await purgeDiscarded(db);
+  let staleTimer = false;
+  const timer = (await db.kv.get('restTimer'))?.value as { sessionId?: ID } | undefined;
+  if (timer) {
+    const s = timer.sessionId ? await db.sessions.get(timer.sessionId) : undefined;
+    if (!s || (s.status !== 'active' && s.status !== 'paused')) { await db.kv.delete('restTimer'); staleTimer = true; }
+  }
   const v = (await db.kv.get('recordsVersion'))?.value;
-  if (v !== RECORDS_VERSION) await recomputeRecords(db);
+  const dirty = ((await db.kv.get(DIRTY_KEY))?.value as ID[] | undefined) ?? [];
+  let recomputed: 'none' | 'dirty' | 'all' = 'none';
+  if (v !== RECORDS_VERSION) { await recomputeRecords(db); recomputed = 'all'; }
+  else if (dirty.length) { await recomputeRecords(db, dirty); recomputed = 'dirty'; }
+  return { purged, staleTimer, recomputed };
 }

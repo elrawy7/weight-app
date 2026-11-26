@@ -104,11 +104,15 @@ export interface WorkoutSessionExercise extends Stamped {
   /** WO-14 knee/area pain after the exercise (0–10). */
   painScore?: number | null;
   replacedById?: ID | null;
+  /** A-06: the remaining sets were skipped after some were completed (the completed ones still count). */
+  skippedRemaining?: boolean;
 }
 export interface PreviousSet { weightKg: number | null; reps: number | null; setType: SetType; durationSec?: number | null; rpe?: number | null }
 export interface PreviousPerformance { sessionId: ID; localDate: ISODate; sets: PreviousSet[]; warmups: PreviousSet[]; painScore: number | null; templateName?: string;
   /** The session before that one (for BR-PO-06 "below range twice"). */
-  olderSets?: PreviousSet[] }
+  olderSets?: PreviousSet[];
+  /** A-05: 0-rep failed attempts of that session (shown, never prefilled). */
+  failed?: PreviousSet[] }
 export type SetType = 'warmup' | 'working' | 'drop' | 'failure';
 export interface WorkoutSet extends Stamped {
   id: ID; sessionExerciseId: ID; orderIndex: number; setType: SetType; weightKg: number | null; inputUnit: 'kg' | 'lb';
@@ -156,6 +160,8 @@ export interface AppSettings extends Stamped {
   deloadSets: number;
   /** Dumbbells available at the gym, per hand (kg). Suggestions snap to these (PO-02). */
   dumbbellsKg: number[];
+  /** B-04: optional number of PAIRS of each plate (key = kg as text). Missing = enough of that plate. */
+  platePairs?: Record<string, number>;
 }
 export interface BackupMetadata { id: ID; createdAt: ISOTime; appVersion: string; schemaVersion: number; counts: Record<string, number>; sha256: string; includesPhotos: boolean; kind: 'manual' | 'auto_snapshot' | 'pre_restore'; fileName?: string }
 export interface MigrationDecision { provisionalId: ID; mappedTo: ID | null; decidedAt: ISOTime; affectedSets: number; affectedRows: number }

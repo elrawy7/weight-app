@@ -8,18 +8,23 @@ import { e1rm, type E1rmFormula } from './e1rm';
 export type PRType = 'max_weight' | 'reps_at_weight' | 'max_reps' | 'e1rm' | 'exercise_volume' | 'session_volume' | 'duration' | 'distance' | 'speed';
 
 export interface PerfSet { setId: ID; weightKg: number | null; reps: number | null; durationSec?: number | null; setType: SetType; rpe?: number | null }
+/** A-05: a completed 0-rep set is a failed attempt – kept in history, never a working set. */
+export const isFailed = (s: Pick<PerfSet, 'reps' | 'durationSec'>) => s.reps === 0 && !s.durationSec;
 export interface Performance {
   sessionId: ID; localDate: string; startedAt: string | null; exerciseId: ID;
   /** Completed sets of completed sessions only (warm-ups included, flagged by setType). */
   sets: PerfSet[];
   cardio?: { durationMin?: number; distanceM?: number; speedKmh?: number } | null;
   painScore?: number | null;
+  /** Working sets planned in that workout (rows, after intentional changes); B-02. */
+  plannedWorking?: number;
 }
 export interface PREvent { exerciseId: ID | null; type: PRType; value: number; previous: number; unit: string; loadMode: LoadMode; sessionId: ID; setId?: ID; date: string; weightKg?: number }
 
 export const LOADED: LoadMode[] = ['total', 'per_hand', 'stack'];
 export const perfOrder = (a: Performance, b: Performance) => a.localDate.localeCompare(b.localDate) || (a.startedAt ?? '').localeCompare(b.startedAt ?? '');
-export const working = (p: Performance) => p.sets.filter((s) => s.setType !== 'warmup');
+export const working = (p: Performance) => p.sets.filter((s) => s.setType !== 'warmup' && !isFailed(s));
+export const failedAttempts = (p: Performance) => p.sets.filter((s) => s.setType !== 'warmup' && isFailed(s));
 
 /** Volume of one performance (both hands for per-hand loads – see known limitation R-23). */
 export function perfVolume(p: Performance, loadMode: LoadMode): number {

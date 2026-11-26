@@ -29,14 +29,17 @@ export async function historyItems(db: WeightDB): Promise<HistoryItem[]> {
   const setsBySe = new Map<ID, WorkoutSet[]>();
   for (const x of sets) setsBySe.set(x.sessionExerciseId, [...(setsBySe.get(x.sessionExerciseId) ?? []), x]);
   return sessions.map((s) => {
-    const mine = ses.filter((x) => x.sessionId === s.id && x.status !== 'replaced');
+    const mine = ses.filter((x) => x.sessionId === s.id);
     let setsDone = 0, volumeKg = 0;
+    const withSets = new Set<ID>();
     for (const se of mine) for (const x of setsBySe.get(se.id) ?? []) {
-      if (!x.completed || x.setType === 'warmup') continue;
+      if (!x.completed || x.setType === 'warmup' || (x.reps === 0 && !x.durationSec)) continue; // failed attempts aren't working sets
+      withSets.add(se.id);
       setsDone++;
       volumeKg += setVolume(x.weightKg, x.reps, exs.get(se.exerciseId)?.loadMode ?? 'none');
     }
-    const exerciseIds = [...new Set(mine.filter((x) => x.status !== 'skipped').map((x) => x.exerciseId))];
+    // A-06: an exercise is part of the workout if it was done – including the completed sets of a replaced one
+    const exerciseIds = [...new Set(mine.filter((x) => withSets.has(x.id) || (x.status !== 'skipped' && x.status !== 'replaced')).map((x) => x.exerciseId))];
     return {
       session: s, templateName: s.templateId ? tpls.get(s.templateId) : undefined, programName: s.programId ? progs.get(s.programId) : undefined,
       setsDone, volumeKg: Math.round(volumeKg), prCount: prs.filter((p) => p.sessionId === s.id).length,
@@ -57,13 +60,15 @@ export interface SessionDetail { session: WorkoutSession; templateName?: string;
 export async function sessionDetail(db: WeightDB, id: ID): Promise<SessionDetail | null> {
   const s = await db.sessions.get(id);
   if (!s) return null;
-  const ses = (await db.sessionExercises.where('sessionId').equals(id).toArray()).filter((x) => x.status !== 'replaced').sort((a, b) => a.orderIndex - b.orderIndex);
+  const all = (await db.sessionExercises.where('sessionId').equals(id).toArray()).sort((a, b) => a.orderIndex - b.orderIndex);
+  const sets = all.length ? await db.sets.where('sessionExerciseId').anyOf(all.map((x) => x.id)).toArray() : [];
+  // A-06: a replaced exercise stays in the record when it has completed sets
+  const ses = all.filter((x) => x.status !== 'replaced' || sets.some((y) => y.sessionExerciseId === x.id && y.completed === 1));
   const exs = new Map((await db.exercises.bulkGet(ses.map((x) => x.exerciseId))).filter((e): e is Exercise => !!e).map((e) => [e.id, e]));
-  const sets = ses.length ? await db.sets.where('sessionExerciseId').anyOf(ses.map((x) => x.id)).toArray() : [];
   const exercises = ses.map((se) => {
     const mine = sets.filter((x) => x.sessionExerciseId === se.id).sort((a, b) => a.orderIndex - b.orderIndex);
     const ex = exs.get(se.exerciseId);
-    return { se, ex, sets: mine, volumeKg: Math.round(mine.filter((x) => x.completed && x.setType !== 'warmup').reduce((v, x) => v + setVolume(x.weightKg, x.reps, ex?.loadMode ?? 'none'), 0)) };
+    return { se, ex, sets: se.status === 'replaced' ? mine.filter((x) => x.completed === 1) : mine, volumeKg: Math.round(mine.filter((x) => x.completed && x.setType !== 'warmup').reduce((v, x) => v + setVolume(x.weightKg, x.reps, ex?.loadMode ?? 'none'), 0)) };
   });
   return {
     session: s, templateName: s.templateId ? (await db.templates.get(s.templateId))?.name : undefined, programName: s.programId ? (await db.programs.get(s.programId))?.name : undefined,
@@ -98,7 +103,7 @@ export interface SideStats { sets: number; best: WorkoutSet | null; volumeKg: nu
 export interface CompareRow { exerciseId: ID; name: string; loadMode: string; a: SideStats; b: SideStats }
 
 function side(d: DetailExercise): SideStats {
-  const w = d.sets.filter((x) => x.completed && x.setType !== 'warmup');
+  const w = d.sets.filter((x) => x.completed && x.setType !== 'warmup' && !(x.reps === 0 && !x.durationSec));
   const lm = d.ex?.loadMode ?? 'none';
   const best = w.reduce<WorkoutSet | null>((b, x) => (!b || (x.weightKg ?? 0) > (b.weightKg ?? 0) || ((x.weightKg ?? 0) === (b.weightKg ?? 0) && (x.reps ?? 0) > (b.reps ?? 0)) ? x : b), null);
   const e = Math.max(0, ...w.map((x) => epley(x.weightKg, x.reps, lm) ?? 0));
@@ -107,7 +112,7 @@ function side(d: DetailExercise): SideStats {
 
 /** Matching exercises side by side; others listed separately (never compared – BR-EX-03). */
 export function compareSessions(a: SessionDetail, b: SessionDetail): { rows: CompareRow[]; onlyA: DetailExercise[]; onlyB: DetailExercise[] } {
-  const done = (d: DetailExercise) => d.se.status !== 'skipped';
+  const done = (d: DetailExercise) => d.sets.some((x) => x.completed === 1 && x.setType !== 'warmup') || (d.se.status !== 'skipped' && d.se.status !== 'replaced');
   const A = a.exercises.filter(done), B = b.exercises.filter(done);
   const rows: CompareRow[] = [];
   for (const x of A) {

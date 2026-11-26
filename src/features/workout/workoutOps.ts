@@ -12,7 +12,7 @@ import { setsForWeek } from '../../domain/schedule';
 import { epley, setVolume } from '../../domain/e1rm';
 import { snapWeight, type Suggestion, type WeightContext } from '../../domain/progression';
 import type { PRType } from '../../domain/records';
-import { exercisesOfSession, prEventsFor, recomputeRecords } from '../progress/recordsOps';
+import { exercisesOfSession, markRecordsDirty, prEventsFor, recomputeRecords } from '../progress/recordsOps';
 
 export class WorkoutError extends Error {}
 
@@ -33,16 +33,16 @@ export async function previousPerformance(db: WeightDB, exerciseId: ID, before: 
   const sessions = await db.sessions.bulkGet([...new Set(ses.map((x) => x.sessionId))]);
   const byId = new Map(sessions.filter((s): s is WorkoutSession => !!s).map((s) => [s.id, s]));
   const limit = sortKey(before);
+  // A-06: completed sets count whatever happened to the exercise afterwards (skipped remainder, replaced)
   const candidates = ses
-    .filter((x) => x.status !== 'skipped' && x.status !== 'replaced')
     .map((x) => ({ se: x, s: byId.get(x.sessionId) }))
     .filter((c): c is { se: WorkoutSessionExercise; s: WorkoutSession } => !!c.s && c.s.id !== before.id && c.s.status === 'completed' && sortKey(c.s) < limit)
     .sort((a, b) => sortKey(b.s).localeCompare(sortKey(a.s)) || b.se.orderIndex - a.se.orderIndex);
-  const found: { se: WorkoutSessionExercise; s: WorkoutSession; working: WorkoutSet[]; warm: WorkoutSet[] }[] = [];
+  const found: { se: WorkoutSessionExercise; s: WorkoutSession; working: WorkoutSet[]; warm: WorkoutSet[]; failed: WorkoutSet[] }[] = [];
   for (const c of candidates) {
     const sets = (await db.sets.where('sessionExerciseId').equals(c.se.id).sortBy('orderIndex')).filter((x) => x.completed === 1);
-    const working = sets.filter((x) => x.setType !== 'warmup');
-    if (working.length) found.push({ ...c, working, warm: sets.filter((x) => x.setType === 'warmup') });
+    const working = sets.filter((x) => x.setType !== 'warmup' && !isFailedAttempt(x));
+    if (working.length) found.push({ ...c, working, warm: sets.filter((x) => x.setType === 'warmup'), failed: sets.filter((x) => x.setType !== 'warmup' && isFailedAttempt(x)) });
     if (found.length === 2) break;
   }
   if (!found.length) return null;
@@ -51,7 +51,7 @@ export async function previousPerformance(db: WeightDB, exerciseId: ID, before: 
   const map = (x: WorkoutSet): PreviousSet => ({ weightKg: x.weightKg, reps: x.reps, setType: x.setType, durationSec: x.durationSec ?? null, ...(x.rpe != null ? { rpe: x.rpe } : {}) });
   return {
     sessionId: p.s.id, localDate: p.s.localDate, sets: p.working.map(map), warmups: p.warm.map(map), painScore: p.se.painScore ?? null, templateName: tpl?.name,
-    olderSets: older?.working.map(map),
+    olderSets: older?.working.map(map), ...(p.failed.length ? { failed: p.failed.map(map) } : {}),
   };
 }
 
@@ -73,8 +73,20 @@ export async function activeSession(db: WeightDB): Promise<WorkoutSession | unde
 export interface StartArgs { programId?: ID; templateId?: ID; week: number | null; date: ISODate; today: ISODate }
 
 /** WO-01 + PROG-06/BR-SES-01: snapshot targets from the template and freeze previous performance per exercise. */
-export async function startWorkout(db: WeightDB, a: StartArgs): Promise<WorkoutSession> {
-  if (a.date > a.today) throw new WorkoutError('You can only log today or a past day.');
+/** Tables a workout is built from – one read-write transaction over them makes creation atomic (A-01/A-02). */
+const buildTables = (db: WeightDB) => [db.sessions, db.sessionExercises, db.sets, db.exercises, db.templateExercises, db.templates];
+
+/**
+ * A-01: the session, its exercises and their sets are created in ONE read-write transaction. A failure rolls everything
+ * back; IndexedDB serialises read-write transactions on the same stores – also across tabs – so the "one running
+ * workout" check inside the transaction cannot be raced by a double tap or a second tab.
+ */
+export function startWorkout(db: WeightDB, a: StartArgs): Promise<WorkoutSession> {
+  if (a.date > a.today) return Promise.reject(new WorkoutError('You can only log today or a past day.'));
+  return db.transaction('rw', buildTables(db), () => startWorkoutTx(db, a));
+}
+
+async function startWorkoutTx(db: WeightDB, a: StartArgs): Promise<WorkoutSession> {
   const running = await activeSession(db);
   if (running) throw new WorkoutError('Another workout is still in progress. Continue or finish it first.'); // BR-SES-05
   const t = nowIso();
@@ -85,13 +97,18 @@ export async function startWorkout(db: WeightDB, a: StartArgs): Promise<WorkoutS
   };
   const rows = a.templateId ? await db.templateExercises.where('[templateId+orderIndex]').between([a.templateId, -Infinity], [a.templateId, Infinity]).toArray() : [];
   await db.sessions.add(s);
-  for (const [i, r] of rows.entries()) await addExerciseToSession(db, s, r.exerciseId, i + 1, { targetSets: setsForWeek(r.targetSetsByWeek, a.week), targetReps: r.targetReps, restSec: r.restSec, templateExerciseId: r.id, role: r.role, templateNotes: r.notes }, r.supersetGroup);
+  for (const [i, r] of rows.entries()) await addExerciseTx(db, s, r.exerciseId, i + 1, { targetSets: setsForWeek(r.targetSetsByWeek, a.week), targetReps: r.targetReps, restSec: r.restSec, templateExerciseId: r.id, role: r.role, templateNotes: r.notes }, r.supersetGroup);
   return s;
 }
 
-/** Adds an exercise with frozen previous performance and empty set rows (values come from ghost prefill on tick). */
-export async function addExerciseToSession(db: WeightDB, s: WorkoutSession, exerciseId: ID, orderIndex: number,
-  snap: { targetSets?: number; targetReps?: string; restSec?: number; templateExerciseId?: ID; role?: string; templateNotes?: string } = {}, supersetGroup: string | null = null): Promise<WorkoutSessionExercise> {
+type Snap = { targetSets?: number; targetReps?: string; restSec?: number; templateExerciseId?: ID; role?: string; templateNotes?: string };
+
+/** Adds an exercise with frozen previous performance and empty set rows – atomically (joins an outer transaction). */
+export function addExerciseToSession(db: WeightDB, s: WorkoutSession, exerciseId: ID, orderIndex: number, snap: Snap = {}, supersetGroup: string | null = null): Promise<WorkoutSessionExercise> {
+  return db.transaction('rw', buildTables(db), () => addExerciseTx(db, s, exerciseId, orderIndex, snap, supersetGroup));
+}
+
+async function addExerciseTx(db: WeightDB, s: WorkoutSession, exerciseId: ID, orderIndex: number, snap: Snap, supersetGroup: string | null): Promise<WorkoutSessionExercise> {
   const ex = await db.exercises.get(exerciseId);
   if (!ex) throw new WorkoutError('Unknown exercise.');
   const t = nowIso();
@@ -120,21 +137,45 @@ async function touch(db: WeightDB, sessionId: ID, exerciseId?: ID) {
   const t = nowIso();
   const s = await db.sessions.get(sessionId);
   if (s?.status === 'completed') {
-    await db.sessions.update(sessionId, { editedAt: t, updatedAt: t });
-    await recomputeRecords(db, exerciseId ? [exerciseId] : await exercisesOfSession(db, sessionId));
+    const ids = exerciseId ? [exerciseId] : await exercisesOfSession(db, sessionId);
+    await db.transaction('rw', db.sessions, db.kv, async () => { await db.sessions.update(sessionId, { editedAt: t, updatedAt: t }); await markRecordsDirty(db, ids); });
+    await recomputeRecords(db, ids);
   } else await db.sessions.update(sessionId, { lastActivityAt: t, updatedAt: t });
 }
 
 /* ───────────── set editing (WO-04/05/06) ───────────── */
 
-export async function updateSet(db: WeightDB, setId: ID, patch: Partial<Pick<WorkoutSet, 'weightKg' | 'reps' | 'rpe' | 'setType' | 'durationSec' | 'distanceM'>>) {
-  if (patch.reps !== undefined && patch.reps !== null && (!Number.isInteger(patch.reps) || patch.reps < 0 || patch.reps > 200)) throw new WorkoutError('Reps must be a whole number 0–200.');
-  if (patch.weightKg !== undefined && patch.weightKg !== null && (patch.weightKg < 0 || patch.weightKg > 1000)) throw new WorkoutError('Weight must be between 0 and 1000 kg.');
-  if (patch.rpe !== undefined && patch.rpe !== null && (patch.rpe < 6 || patch.rpe > 10 || (patch.rpe * 2) % 1 !== 0)) throw new WorkoutError('RPE must be 6–10 in 0.5 steps.');
-  const set = await db.sets.get(setId);
-  if (!set) throw new WorkoutError('Set not found.');
-  await db.sets.update(setId, { ...patch, updatedAt: nowIso() });
-  const se = await db.sessionExercises.get(set.sessionExerciseId);
+type SetPatch = Partial<Pick<WorkoutSet, 'weightKg' | 'reps' | 'rpe' | 'setType' | 'durationSec' | 'distanceM'>>;
+
+/** A-05: reject NaN, ±Infinity, out-of-range and malformed values; normalise loads to grams. Throws WorkoutError. */
+export function validateSetPatch(patch: SetPatch): SetPatch {
+  const out: SetPatch = { ...patch };
+  const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+  if (patch.reps != null && (!num(patch.reps) || !Number.isInteger(patch.reps) || patch.reps < 0 || patch.reps > 200)) throw new WorkoutError('Reps must be a whole number 0–200.');
+  if (patch.weightKg != null) {
+    if (!num(patch.weightKg) || patch.weightKg < 0 || patch.weightKg > 1000) throw new WorkoutError('Weight must be a number between 0 and 1000 kg.');
+    out.weightKg = Math.round(patch.weightKg * 1000) / 1000;
+  }
+  if (patch.rpe != null && (!num(patch.rpe) || patch.rpe < 6 || patch.rpe > 10 || (patch.rpe * 2) % 1 !== 0)) throw new WorkoutError('RPE must be 6–10 in 0.5 steps.');
+  if (patch.durationSec != null && (!num(patch.durationSec) || !Number.isInteger(patch.durationSec) || patch.durationSec < 1 || patch.durationSec > 36000)) throw new WorkoutError('Seconds must be a whole number 1–36000.');
+  if (patch.distanceM != null && (!num(patch.distanceM) || patch.distanceM < 0 || patch.distanceM > 1_000_000)) throw new WorkoutError('Distance must be between 0 and 1000 km.');
+  if (patch.setType != null && !['working', 'warmup', 'drop', 'failure'].includes(patch.setType)) throw new WorkoutError('Unknown set type.');
+  return out;
+}
+
+/**
+ * Read + write of a set happen in one read-write transaction that is opened synchronously when called, so edits and
+ * ✓ taps are applied in the order the user made them (A-05: a value typed just before ✓ is never lost).
+ */
+export async function updateSet(db: WeightDB, setId: ID, patch: SetPatch) {
+  let clean: SetPatch;
+  try { clean = validateSetPatch(patch); } catch (e) { return Promise.reject(e); }
+  const se = await db.transaction('rw', db.sets, db.sessionExercises, async () => {
+    const set = await db.sets.get(setId);
+    if (!set) throw new WorkoutError('Set not found.');
+    await db.sets.update(setId, { ...clean, updatedAt: nowIso() });
+    return db.sessionExercises.get(set.sessionExerciseId);
+  });
   if (se) await touch(db, se.sessionId, se.exerciseId);
 }
 
@@ -142,46 +183,87 @@ export async function updateSet(db: WeightDB, setId: ID, patch: Partial<Pick<Wor
  * WO-04 AC1 / WO-05 AC1: ticking ✓ records the shown values; empty fields take the ghost (prefill) values.
  * Returns whether a rest timer should start (BR-TIMER-01: not inside a superset round, not for warm-ups).
  */
-export async function toggleSetComplete(db: WeightDB, setId: ID, ghost: { weightKg: number | null; reps: number | null; durationSec?: number | null }, measure: 'reps' | 'duration' = 'reps'): Promise<{ completed: boolean; startRest: boolean; restSec: number }> {
-  const set = await db.sets.get(setId);
-  if (!set) throw new WorkoutError('Set not found.');
-  const se = (await db.sessionExercises.get(set.sessionExerciseId))!;
-  const t = nowIso();
-  if (set.completed) {
-    await db.sets.update(setId, { completed: 0, completedAt: null, updatedAt: t });
-    await refreshExerciseStatus(db, se.id);
-    await touch(db, se.sessionId, se.exerciseId);
-    return { completed: false, startRest: false, restSec: 0 };
-  }
-  const weightKg = set.weightKg ?? ghost.weightKg;
+/**
+ * A-05: what a completed set must contain, by tracking type and load mode. Ghost (prefilled) values count as entered –
+ * they are shown in the field. Throws a WorkoutError naming the missing value.
+ */
+export function completedValues(ex: Pick<Exercise, 'loadMode' | 'tracking'> | undefined, set: Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationSec'>,
+  ghost: { weightKg: number | null; reps: number | null; durationSec?: number | null }, measure: 'reps' | 'duration'): Partial<WorkoutSet> {
+  const lm = ex?.loadMode ?? 'total';
+  const w = set.weightKg ?? ghost.weightKg ?? null;
+  let weightKg: number | null;
+  if (lm === 'total' || lm === 'per_hand' || lm === 'stack') {
+    if (w == null) throw new WorkoutError('Enter the weight first.');
+    weightKg = w;
+  } else if (lm === 'assist') {
+    if (w == null) throw new WorkoutError('Enter the assistance (kg) first – 0 for none.');
+    weightKg = w;
+  } else if (lm === 'bodyweight') weightKg = w ?? 0; // no external load
+  else weightKg = w; // band / none: no load to record
   if (measure === 'duration') {
-    const durationSec = set.durationSec ?? ghost.durationSec ?? null;
-    if (!durationSec) throw new WorkoutError('Enter the seconds first.');
-    await db.sets.update(setId, { weightKg: weightKg ?? 0, durationSec, completed: 1, completedAt: t, updatedAt: t });
-  } else {
-    const reps = set.reps ?? ghost.reps;
-    if (reps === null || reps === undefined) throw new WorkoutError('Enter the reps first.');
-    await db.sets.update(setId, { weightKg: weightKg ?? 0, reps, completed: 1, completedAt: t, updatedAt: t });
+    const d = set.durationSec ?? ghost.durationSec ?? null;
+    if (d == null || !Number.isFinite(d) || d < 1) throw new WorkoutError('Enter the seconds first.');
+    return { weightKg, durationSec: d };
   }
+  const reps = set.reps ?? ghost.reps;
+  if (reps == null || !Number.isFinite(reps)) throw new WorkoutError('Enter the reps first.');
+  return { weightKg, reps };
+}
+
+/** A-05: a completed set with 0 reps is a failed attempt – recorded, but never counted as a working set. */
+export const isFailedAttempt = (s: Pick<WorkoutSet, 'completed' | 'reps' | 'durationSec'>) => s.completed === 1 && s.reps === 0 && !s.durationSec;
+
+export async function toggleSetComplete(db: WeightDB, setId: ID, ghost: { weightKg: number | null; reps: number | null; durationSec?: number | null }, measure: 'reps' | 'duration' = 'reps'): Promise<{ completed: boolean; startRest: boolean; restSec: number }> {
+  // read + write in one transaction opened now → ordered after any edit made before this tap (A-05)
+  const { se, completed, set } = await db.transaction('rw', db.sets, db.sessionExercises, db.exercises, db.kv, async () => {
+    const set = await db.sets.get(setId);
+    if (!set) throw new WorkoutError('Set not found.');
+    const se = (await db.sessionExercises.get(set.sessionExerciseId))!;
+    const t = nowIso();
+    if (set.completed) {
+      await db.sets.update(setId, { completed: 0, completedAt: null, updatedAt: t });
+      // A-07: undoing the set that started the rest timer stops it
+      const cur = (await db.kv.get(REST_KEY))?.value as RestTimerState | undefined;
+      if (cur?.setId === setId) await db.kv.delete(REST_KEY);
+      return { se, completed: false, set };
+    }
+    const ex = await db.exercises.get(se.exerciseId);
+    const vals = completedValues(ex, set, ghost, measure);
+    validateSetPatch(vals as SetPatch);
+    await db.sets.update(setId, { ...vals, completed: 1, completedAt: t, updatedAt: t });
+    return { se, completed: true, set };
+  });
   await refreshExerciseStatus(db, se.id);
   await touch(db, se.sessionId, se.exerciseId);
   const restSec = se.snapshot?.restSec ?? 90;
+  if (!completed) return { completed: false, startRest: false, restSec: 0 };
   if (set.setType === 'warmup') return { completed: true, startRest: false, restSec };
-  return { completed: true, startRest: await isEndOfSupersetRound(db, se), restSec };
+  return { completed: true, startRest: await isEndOfSupersetRound(db, se, setId), restSec };
 }
 
-/** BR-TIMER-01: inside a superset, rest only after the last exercise of the round. */
-export async function isEndOfSupersetRound(db: WeightDB, se: WorkoutSessionExercise): Promise<boolean> {
+/**
+ * BR-TIMER-01 / A-07: inside a superset, rest starts when the ROUND is complete – i.e. every exercise of the group that
+ * has a working set at this position (and isn't skipped or replaced) has completed it. Order of completion, unequal set
+ * counts and skipped partners are all handled.
+ */
+export async function isEndOfSupersetRound(db: WeightDB, se: WorkoutSessionExercise, setId?: ID): Promise<boolean> {
   if (!se.supersetGroup) return true;
+  const working = async (id: ID) => (await db.sets.where('sessionExerciseId').equals(id).sortBy('orderIndex')).filter((x) => x.setType !== 'warmup');
+  const mine = await working(se.id);
+  const pos = setId ? mine.findIndex((x) => x.id === setId) : mine.filter((x) => x.completed).length - 1;
+  if (pos < 0) return true;
   const group = (await db.sessionExercises.where('sessionId').equals(se.sessionId).toArray())
-    .filter((x) => x.supersetGroup === se.supersetGroup && x.status !== 'skipped' && x.status !== 'replaced')
-    .sort((a, b) => a.orderIndex - b.orderIndex);
-  return group[group.length - 1]?.id === se.id;
+    .filter((x) => x.supersetGroup === se.supersetGroup && x.id !== se.id && x.status !== 'skipped' && x.status !== 'replaced' && !x.skippedRemaining);
+  for (const other of group) {
+    const sets = await working(other.id);
+    if (sets[pos] && !sets[pos].completed) return false;
+  }
+  return true;
 }
 
 async function refreshExerciseStatus(db: WeightDB, seId: ID) {
   const se = await db.sessionExercises.get(seId);
-  if (!se || se.status === 'skipped' || se.status === 'replaced') return;
+  if (!se || se.status === 'skipped' || se.status === 'replaced' || se.skippedRemaining) return;
   const sets = await db.sets.where('sessionExerciseId').equals(seId).toArray();
   const done = sets.filter((s) => s.completed).length;
   const status = done === 0 ? 'pending' : done === sets.length ? 'completed' : 'in_progress';
@@ -243,9 +325,19 @@ export async function applySuggestion(db: WeightDB, seId: ID, sug: Pick<Suggesti
 
 /* ───────────── exercise-level actions (WO-07/08/13/14) ───────────── */
 
+/**
+ * A-06 / BR-SES-11: skipping an exercise that already has completed sets means "skip the remaining sets" – the done
+ * sets stay valid performance (status completed, `skippedRemaining`). With nothing done it is skipped.
+ */
 export async function skipExercise(db: WeightDB, seId: ID, skip = true) {
-  await db.sessionExercises.update(seId, { status: skip ? 'skipped' : 'pending', updatedAt: nowIso() });
+  await db.transaction('rw', db.sessionExercises, db.sets, async () => {
+    const done = await db.sets.where('sessionExerciseId').equals(seId).filter((x) => x.completed === 1).count();
+    if (skip) await db.sessionExercises.update(seId, done ? { status: 'completed', skippedRemaining: true, updatedAt: nowIso() } : { status: 'skipped', skippedRemaining: false, updatedAt: nowIso() });
+    else await db.sessionExercises.update(seId, { status: 'pending', skippedRemaining: false, updatedAt: nowIso() });
+  });
   if (!skip) await refreshExerciseStatus(db, seId);
+  const se = await db.sessionExercises.get(seId);
+  if (se) await touch(db, se.sessionId, se.exerciseId);
 }
 
 /** BR-SES-10: replacement gets its own previous performance; original marked replaced. */
@@ -289,6 +381,12 @@ export async function setPain(db: WeightDB, seId: ID, painScore: number | null) 
 }
 /** Merges the patch into the stored cardio values (safe against fast consecutive edits). `done` undefined = keep status. */
 export async function setCardio(db: WeightDB, seId: ID, patch: WorkoutSessionExercise['cardio'], done?: boolean) {
+  const lim: Record<string, [number, number]> = { durationMin: [0, 600], distanceM: [0, 1_000_000], inclinePct: [0, 40], speedKmh: [0, 40], rounds: [0, 100], roundMin: [0, 60] };
+  for (const [k, v] of Object.entries(patch ?? {})) {
+    if (v === undefined) continue;
+    const [lo, hi] = lim[k] ?? [0, 1e6];
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi) throw new WorkoutError(`${k} must be a number between ${lo} and ${hi}.`);
+  }
   await db.transaction('rw', db.sessionExercises, async () => {
     const se = await db.sessionExercises.get(seId);
     if (!se) return;
@@ -322,7 +420,7 @@ export interface SessionSummary { durationMin: number; setsDone: number; setsPla
 
 export async function summarize(db: WeightDB, id: ID): Promise<SessionSummary> {
   const s = (await db.sessions.get(id))!;
-  const ses = (await db.sessionExercises.where('sessionId').equals(id).toArray()).filter((x) => x.status !== 'replaced').sort((a, b) => a.orderIndex - b.orderIndex);
+  const ses = (await db.sessionExercises.where('sessionId').equals(id).toArray()).sort((a, b) => a.orderIndex - b.orderIndex);
   const exs = new Map((await db.exercises.bulkGet(ses.map((x) => x.exerciseId))).filter((e): e is Exercise => !!e).map((e) => [e.id, e]));
   let setsDone = 0, setsPlanned = 0, volumeKg = 0, exercisesDone = 0;
   const incomplete: string[] = [], painFlags: string[] = [];
@@ -330,8 +428,9 @@ export async function summarize(db: WeightDB, id: ID): Promise<SessionSummary> {
     const ex = exs.get(se.exerciseId);
     const sets = await db.sets.where('sessionExerciseId').equals(se.id).toArray();
     const working = sets.filter((x) => x.setType !== 'warmup');
-    const done = working.filter((x) => x.completed);
-    if (se.status !== 'skipped') setsPlanned += working.length;
+    const done = working.filter((x) => x.completed && !isFailedAttempt(x));
+    if (se.status === 'replaced') { setsDone += done.length; setsPlanned += done.length; for (const x of done) volumeKg += setVolume(x.weightKg, x.reps, ex?.loadMode ?? 'total'); continue; } // A-06
+    if (se.status !== 'skipped') setsPlanned += se.skippedRemaining ? done.length : working.length;
     setsDone += done.length;
     for (const x of done) volumeKg += setVolume(x.weightKg, x.reps, ex?.loadMode ?? 'total');
     if (se.cardio ? se.status === 'completed' : done.length > 0) exercisesDone++;
@@ -348,7 +447,12 @@ export async function finishSession(db: WeightDB, id: ID, extra: { kneePain: num
   if (extra.energy != null && (extra.energy < 1 || extra.energy > 5)) throw new WorkoutError('Energy must be 1–5.');
   const s = await db.sessions.get(id);
   if (!s) throw new WorkoutError('Session not found.');
-  await db.transaction('rw', [db.sessions, db.sessionExercises, db.sets], async () => {
+  const exIds = await exercisesOfSession(db, id);
+  await db.transaction('rw', [db.sessions, db.sessionExercises, db.sets, db.kv], async () => {
+    // A-03: the rest timer and a "records need recomputing" marker change in the same transaction as the completion
+    const cur = (await db.kv.get(REST_KEY))?.value as RestTimerState | undefined;
+    if (cur?.sessionId === id) await db.kv.delete(REST_KEY);
+    await markRecordsDirty(db, exIds);
     for (const se of await db.sessionExercises.where('sessionId').equals(id).toArray()) {
       if (se.status === 'replaced' || se.status === 'skipped') continue;
       if (se.cardio) { if (se.status !== 'completed' && !(se.cardio.durationMin || se.cardio.distanceM)) await db.sessionExercises.update(se.id, { status: 'skipped' }); else await db.sessionExercises.update(se.id, { status: 'completed' }); continue; }
@@ -363,14 +467,9 @@ export async function finishSession(db: WeightDB, id: ID, extra: { kneePain: num
       kneePain: extra.kneePain, energy: extra.energy, notes: extra.notes.trim(), logType: 'full', updatedAt: nowIso(),
     });
   });
-  await clearRestFor(db, id);
-  await recomputeRecords(db, await exercisesOfSession(db, id)); // PR-01: store the new records
+  await recomputeRecords(db, exIds); // PR-01; if this is interrupted the dirty marker makes start-up finish it
 }
 
-async function clearRestFor(db: WeightDB, sessionId: ID) {
-  const cur = (await db.kv.get(REST_KEY))?.value as RestTimerState | undefined;
-  if (cur?.sessionId === sessionId) await db.kv.delete(REST_KEY);
-}
 
 /** Edit the summary of a completed session (minutes, knee pain, energy, note). */
 export async function updateSummary(db: WeightDB, id: ID, v: { kneePain: number | null; energy: number | null; notes: string; durationMin: number | null }) {
@@ -384,9 +483,14 @@ export async function updateSummary(db: WeightDB, id: ID, v: { kneePain: number 
 export async function discardSession(db: WeightDB, id: ID) {
   const s = await db.sessions.get(id);
   if (!s) return;
-  await db.sessions.update(id, { status: 'discarded', statusBeforeDiscard: s.status === 'discarded' ? s.statusBeforeDiscard : s.status, discardedAt: nowIso(), updatedAt: nowIso() });
-  await clearRestFor(db, id);
-  if (s.status === 'completed') await recomputeRecords(db, await exercisesOfSession(db, id)); // BR-PR-05
+  const exIds = await exercisesOfSession(db, id);
+  await db.transaction('rw', db.sessions, db.kv, async () => {
+    await db.sessions.update(id, { status: 'discarded', statusBeforeDiscard: s.status === 'discarded' ? s.statusBeforeDiscard : s.status, discardedAt: nowIso(), updatedAt: nowIso() });
+    const cur = (await db.kv.get(REST_KEY))?.value as RestTimerState | undefined;
+    if (cur?.sessionId === id) await db.kv.delete(REST_KEY);
+    if (s.status === 'completed') await markRecordsDirty(db, exIds);
+  });
+  if (s.status === 'completed') await recomputeRecords(db, exIds); // BR-PR-05
 }
 
 /** Discarded sessions still restorable (30 days), newest first. */
@@ -399,8 +503,12 @@ export async function restoreSession(db: WeightDB, id: ID) {
   const s = await db.sessions.get(id);
   if (!s || s.status !== 'discarded') return;
   const back = s.statusBeforeDiscard === 'active' || s.statusBeforeDiscard === 'paused' ? ((await activeSession(db)) ? 'completed' : 'paused') : (s.statusBeforeDiscard ?? 'completed');
-  await db.sessions.update(id, { status: back, discardedAt: null, updatedAt: nowIso() });
-  if (back === 'completed') await recomputeRecords(db, await exercisesOfSession(db, id));
+  const exIds = await exercisesOfSession(db, id);
+  await db.transaction('rw', db.sessions, db.kv, async () => {
+    await db.sessions.update(id, { status: back, discardedAt: null, updatedAt: nowIso() });
+    if (back === 'completed') await markRecordsDirty(db, exIds);
+  });
+  if (back === 'completed') await recomputeRecords(db, exIds);
 }
 export const restorableUntil = (discardedAt: string) => new Date(new Date(discardedAt).getTime() + 30 * 86400000);
 
@@ -409,12 +517,23 @@ export const isStale = (s: Pick<WorkoutSession, 'status' | 'lastActivityAt' | 's
   (s.status === 'active' || s.status === 'paused') && now - new Date(s.lastActivityAt ?? s.startedAt ?? now).getTime() > 6 * 3600000;
 
 /** Convert a quick log (QL-01) into a full, editable log for the same day. */
-export async function quickToFull(db: WeightDB, sessionId: ID): Promise<void> {
-  const s = await db.sessions.get(sessionId);
-  if (!s || s.logType !== 'quick') throw new WorkoutError('Only quick logs can be converted.');
-  const rows = s.templateId ? await db.templateExercises.where('[templateId+orderIndex]').between([s.templateId, -Infinity], [s.templateId, Infinity]).toArray() : [];
-  for (const [i, r] of rows.entries()) await addExerciseToSession(db, s, r.exerciseId, i + 1, { targetSets: setsForWeek(r.targetSetsByWeek, s.programWeek ?? null), targetReps: r.targetReps, restSec: r.restSec, templateExerciseId: r.id, role: r.role, templateNotes: r.notes }, r.supersetGroup);
-  await db.sessions.update(sessionId, { logType: 'full', updatedAt: nowIso() });
+/**
+ * Convert a quick log (QL-01) into a full, editable log. A-02: one transaction (all or nothing) and idempotent – a
+ * concurrent or repeated call finds the session already converted and changes nothing.
+ */
+export function quickToFull(db: WeightDB, sessionId: ID): Promise<void> {
+  return db.transaction('rw', buildTables(db), async () => {
+    const s = await db.sessions.get(sessionId);
+    if (!s) throw new WorkoutError('Session not found.');
+    if (s.logType !== 'quick') return; // already converted (retry / second tap / other tab)
+    const rows = s.templateId ? await db.templateExercises.where('[templateId+orderIndex]').between([s.templateId, -Infinity], [s.templateId, Infinity]).toArray() : [];
+    const existing = new Set((await db.sessionExercises.where('sessionId').equals(sessionId).toArray()).map((x) => x.snapshot?.templateExerciseId));
+    for (const [i, r] of rows.entries()) {
+      if (existing.has(r.id)) continue;
+      await addExerciseTx(db, s, r.exerciseId, i + 1, { targetSets: setsForWeek(r.targetSetsByWeek, s.programWeek ?? null), targetReps: r.targetReps, restSec: r.restSec, templateExerciseId: r.id, role: r.role, templateNotes: r.notes }, r.supersetGroup);
+    }
+    await db.sessions.update(sessionId, { logType: 'full', updatedAt: nowIso() });
+  });
 }
 
 /* ───────────── exercise history (WO-12) ───────────── */
@@ -427,10 +546,10 @@ export async function exerciseHistory(db: WeightDB, exerciseId: ID, limit = 50):
   const out: HistoryEntry[] = [];
   for (const se of ses) {
     const s = sessions.get(se.sessionId);
-    if (!s || s.status !== 'completed' || se.status === 'replaced') continue;
+    if (!s || s.status !== 'completed') continue;
     const sets = (await db.sets.where('sessionExerciseId').equals(se.id).sortBy('orderIndex')).filter((x) => x.completed === 1);
     if (!sets.length && !se.cardio) continue;
-    const working = sets.filter((x) => x.setType !== 'warmup');
+    const working = sets.filter((x) => x.setType !== 'warmup' && !isFailedAttempt(x));
     const best = working.reduce<WorkoutSet | null>((b, x) => (!b || (x.weightKg ?? 0) > (b.weightKg ?? 0) || ((x.weightKg ?? 0) === (b.weightKg ?? 0) && (x.reps ?? 0) > (b.reps ?? 0)) ? x : b), null);
     const tpl = s.templateId ? await db.templates.get(s.templateId) : undefined;
     out.push({ sessionId: s.id, localDate: s.localDate, templateName: tpl?.name, week: s.programWeek, sets, best, painScore: se.painScore ?? null, notes: se.notes });
@@ -440,7 +559,7 @@ export async function exerciseHistory(db: WeightDB, exerciseId: ID, limit = 50):
 
 /* ───────────── rest timer state (TMR-02, persisted as timestamps) ───────────── */
 
-export interface RestTimerState { sessionId: ID; exerciseName: string; startedAt: number; durationSec: number; pausedAt: number | null; pausedTotalMs: number }
+export interface RestTimerState { sessionId: ID; exerciseName: string; startedAt: number; durationSec: number; pausedAt: number | null; pausedTotalMs: number; /** A-07: the set whose completion started it. */ setId?: ID }
 export const REST_KEY = 'restTimer';
 export function restRemaining(t: RestTimerState, now = Date.now()): number {
   const elapsed = (t.pausedAt ?? now) - t.startedAt - t.pausedTotalMs;
@@ -475,8 +594,8 @@ export async function bestBefore(db: WeightDB, exerciseId: ID, before: Pick<Work
   let best: Best | null = null;
   for (const se of ses) {
     const s = sessions.get(se.sessionId);
-    if (!s || s.id === before.id || s.status !== 'completed' || sortKey(s) >= limit || se.status === 'replaced') continue;
-    const sets = (await db.sets.where('sessionExerciseId').equals(se.id).toArray()).filter((x) => x.completed === 1 && x.setType !== 'warmup');
+    if (!s || s.id === before.id || s.status !== 'completed' || sortKey(s) >= limit) continue;
+    const sets = (await db.sets.where('sessionExerciseId').equals(se.id).toArray()).filter((x) => x.completed === 1 && x.setType !== 'warmup' && !isFailedAttempt(x));
     for (const x of sets) {
       best ??= { maxWeightKg: 0, maxE1rm: 0, maxReps: 0 };
       best.maxWeightKg = Math.max(best.maxWeightKg, x.weightKg ?? 0);

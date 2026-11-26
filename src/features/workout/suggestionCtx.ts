@@ -2,8 +2,8 @@
 import type { WeightDB } from '../../db/schema';
 import type { AppSettings, Exercise, ID, WorkoutProgram, WorkoutSession } from '../../db/types';
 import { addDays } from '../../domain/dates';
-import { barbellLoads, type RecentPerf, type WeightContext } from '../../domain/progression';
-import { perfOrder, working } from '../../domain/records';
+import { plateLoads, type RecentPerf, type WeightContext } from '../../domain/progression';
+import { failedAttempts, perfOrder, working } from '../../domain/records';
 import { performancesOf } from '../progress/recordsOps';
 
 const sortKey = (s: { localDate: string; startedAt: string | null }) => `${s.localDate}|${s.startedAt ?? ''}`;
@@ -16,19 +16,30 @@ export async function recentPerfs(db: WeightDB, exerciseIds: ID[], before: Pick<
   const perfs = (await performancesOf(db, exerciseIds)).filter((p) => p.sessionId !== before.id && sortKey(p) < limit && working(p).length).sort(perfOrder).reverse();
   for (const p of perfs) {
     const list = out.get(p.exerciseId) ?? [];
-    if (list.length < 4) list.push({ localDate: p.localDate, painScore: p.painScore ?? null, sets: working(p).map((s) => ({ weightKg: s.weightKg, reps: s.reps, rpe: s.rpe })) });
+    if (list.length < 4) list.push({
+      localDate: p.localDate, painScore: p.painScore ?? null, sets: working(p).map((s) => ({ weightKg: s.weightKg, reps: s.reps, rpe: s.rpe })),
+      planned: p.plannedWorking, failed: failedAttempts(p).length, // B-02: partial workouts are recognised
+    });
     out.set(p.exerciseId, list);
   }
   return out;
+}
+
+/** Latest recorded body weight (kg), for assisted-exercise maths (B-01). */
+export async function latestBodyweight(db: WeightDB): Promise<number | null> {
+  const m = await db.bodyMeasurements.orderBy('date').reverse().filter((x) => x.weightKg != null).first();
+  return m?.weightKg ?? null;
 }
 
 /** PO-02 / BR-PO-10: what loads can actually be set on this equipment. */
 export function weightContext(ex: Pick<Exercise, 'id' | 'equipmentId'>, incrementKg: number, s: AppSettings): WeightContext {
   if (s.incrementOverrides[`ex:${ex.id}`] != null) return { incrementKg }; // the user set this exercise's own step
   if (ex.equipmentId === 'dumbbell' && s.dumbbellsKg.length) return { incrementKg, available: s.dumbbellsKg };
-  if (ex.equipmentId === 'barbell') return { incrementKg, available: barbellLoads(s.barbellKg, s.plateSetKg) };
-  if (ex.equipmentId === 'ez_bar') return { incrementKg, available: barbellLoads(s.ezBarKg, s.plateSetKg) };
-  if (ex.equipmentId === 'smith_machine' && s.smithBarKg != null) return { incrementKg, available: barbellLoads(s.smithBarKg, s.plateSetKg) };
+  // B-04: exact plate maths with the stock you entered (no count = enough of that plate)
+  const stock = s.plateSetKg.map((kg) => ({ kg, pairs: s.platePairs?.[String(kg)] }));
+  if (ex.equipmentId === 'barbell') return { incrementKg, available: plateLoads(s.barbellKg, stock) };
+  if (ex.equipmentId === 'ez_bar') return { incrementKg, available: plateLoads(s.ezBarKg, stock) };
+  if (ex.equipmentId === 'smith_machine' && s.smithBarKg != null) return { incrementKg, available: plateLoads(s.smithBarKg, stock) };
   return { incrementKg };
 }
 
