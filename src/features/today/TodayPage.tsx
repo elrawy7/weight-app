@@ -197,7 +197,7 @@ export function TodayPage() {
           {plan.kind !== 'planned' && canLog && !active && <Button mt="sm" variant="light" fullWidth leftSection={<IconPlus size={18} />} onClick={() => setStartOpen(true)} data-testid="start-any">{t('wo.startAny')}</Button>}
           {others.map((o) => (
             <Button key={o.id} mt="xs" variant="subtle" fullWidth justify="space-between" rightSection={<IconChevronRight size={16} />} onClick={() => nav(`/workout/${o.id}`)} data-testid="other-session">
-              {t('wo.alsoLogged', { name: (o.templateId ? tplMap.get(o.templateId)?.name : undefined) ?? t('wo.emptyName') })}
+              {t('wo.alsoLogged', { name: o.templateName ?? (o.templateId ? tplMap.get(o.templateId)?.name : undefined) ?? t('wo.emptyName') })}
             </Button>
           ))}
         </Card>

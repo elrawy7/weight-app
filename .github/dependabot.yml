@@ -11,6 +11,10 @@ updates:
     directory: /
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    # major versions (e.g. Mantine, ESLint) change APIs – they are planned upgrades, not automatic PRs
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       dev-tools:
         dependency-type: development

@@ -6,6 +6,7 @@ import type { WeightDB } from '../../db/schema';
 import type { Exercise, ID, PersonalRecord, WorkoutSession } from '../../db/types';
 import { detectPRs, perfVolume, sessionVolumePRs, type Performance, type PREvent } from '../../domain/records';
 import { getSettings } from '../../db/defaults';
+import { freezeTemplateNames } from '../workout/sessionNames';
 
 export const RECORDS_VERSION = 1;
 export const SESSION_KEY = '__session';
@@ -117,8 +118,9 @@ export async function purgeDiscarded(db: WeightDB, now = Date.now()): Promise<nu
  * running; finish any records recompute that was interrupted; (re)build PRs when missing or after an import/restore.
  * Returns what it repaired (for diagnostics and tests).
  */
-export async function maintenance(db: WeightDB): Promise<{ purged: number; staleTimer: boolean; recomputed: 'none' | 'dirty' | 'all' }> {
-  const purged = await purgeDiscarded(db);
+export async function maintenance(db: WeightDB, o: { rebuildIfMissing?: boolean } = {}): Promise<{ purged: number; staleTimer: boolean; recomputed: 'none' | 'dirty' | 'all' }> {
+  const purged = o.rebuildIfMissing === false ? 0 : await purgeDiscarded(db);
+  await freezeTemplateNames(db); // E: one-time backfill for workouts logged before names were frozen
   let staleTimer = false;
   const timer = (await db.kv.get('restTimer'))?.value as { sessionId?: ID } | undefined;
   if (timer) {
@@ -128,7 +130,7 @@ export async function maintenance(db: WeightDB): Promise<{ purged: number; stale
   const v = (await db.kv.get('recordsVersion'))?.value;
   const dirty = ((await db.kv.get(DIRTY_KEY))?.value as ID[] | undefined) ?? [];
   let recomputed: 'none' | 'dirty' | 'all' = 'none';
-  if (v !== RECORDS_VERSION) { await recomputeRecords(db); recomputed = 'all'; }
+  if (v !== RECORDS_VERSION) { if (o.rebuildIfMissing !== false) { await recomputeRecords(db); recomputed = 'all'; } }
   else if (dirty.length) { await recomputeRecords(db, dirty); recomputed = 'dirty'; }
   return { purged, staleTimer, recomputed };
 }

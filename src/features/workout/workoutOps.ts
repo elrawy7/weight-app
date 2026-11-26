@@ -47,7 +47,7 @@ export async function previousPerformance(db: WeightDB, exerciseId: ID, before: 
   }
   if (!found.length) return null;
   const [p, older] = found;
-  const tpl = p.s.templateId ? await db.templates.get(p.s.templateId) : undefined;
+  const tpl = p.s.templateName !== undefined ? { name: p.s.templateName } : p.s.templateId ? await db.templates.get(p.s.templateId) : undefined;
   const map = (x: WorkoutSet): PreviousSet => ({ weightKg: x.weightKg, reps: x.reps, setType: x.setType, durationSec: x.durationSec ?? null, ...(x.rpe != null ? { rpe: x.rpe } : {}) });
   return {
     sessionId: p.s.id, localDate: p.s.localDate, sets: p.working.map(map), warmups: p.warm.map(map), painScore: p.se.painScore ?? null, templateName: tpl?.name,
@@ -75,6 +75,8 @@ export interface StartArgs { programId?: ID; templateId?: ID; week: number | nul
 /** WO-01 + PROG-06/BR-SES-01: snapshot targets from the template and freeze previous performance per exercise. */
 /** Tables a workout is built from – one read-write transaction over them makes creation atomic (A-01/A-02). */
 const buildTables = (db: WeightDB) => [db.sessions, db.sessionExercises, db.sets, db.exercises, db.templateExercises, db.templates];
+/** Runs `fn` in the read-write transaction workouts are built in (A-01) – for other creation paths (repeat). */
+export const inBuildTransaction = <T>(db: WeightDB, fn: () => Promise<T>): Promise<T> => db.transaction('rw', buildTables(db), fn);
 
 /**
  * A-01: the session, its exercises and their sets are created in ONE read-write transaction. A failure rolls everything
@@ -86,6 +88,7 @@ export function startWorkout(db: WeightDB, a: StartArgs): Promise<WorkoutSession
   return db.transaction('rw', buildTables(db), () => startWorkoutTx(db, a));
 }
 
+
 async function startWorkoutTx(db: WeightDB, a: StartArgs): Promise<WorkoutSession> {
   const running = await activeSession(db);
   if (running) throw new WorkoutError('Another workout is still in progress. Continue or finish it first.'); // BR-SES-05
@@ -95,6 +98,7 @@ async function startWorkoutTx(db: WeightDB, a: StartArgs): Promise<WorkoutSessio
     localDate: a.date, notes: '', source: 'app', logType: 'full', lastActivityAt: t, pausedAt: null, createdAt: t, updatedAt: t,
     dateSource: a.date === a.today ? DATE_SOURCE_LIVE : DATE_SOURCE_BACKLOG,
   };
+  if (a.templateId) { const tpl = await db.templates.get(a.templateId); if (tpl) s.templateName = tpl.name; }
   const rows = a.templateId ? await db.templateExercises.where('[templateId+orderIndex]').between([a.templateId, -Infinity], [a.templateId, Infinity]).toArray() : [];
   await db.sessions.add(s);
   for (const [i, r] of rows.entries()) await addExerciseTx(db, s, r.exerciseId, i + 1, { targetSets: setsForWeek(r.targetSetsByWeek, a.week), targetReps: r.targetReps, restSec: r.restSec, templateExerciseId: r.id, role: r.role, templateNotes: r.notes }, r.supersetGroup);
@@ -561,7 +565,7 @@ export async function exerciseHistory(db: WeightDB, exerciseId: ID, limit = 50):
     if (!sets.length && !se.cardio) continue;
     const working = sets.filter((x) => x.setType !== 'warmup' && !isFailedAttempt(x));
     const best = working.reduce<WorkoutSet | null>((b, x) => (!b || (x.weightKg ?? 0) > (b.weightKg ?? 0) || ((x.weightKg ?? 0) === (b.weightKg ?? 0) && (x.reps ?? 0) > (b.reps ?? 0)) ? x : b), null);
-    const tpl = s.templateId ? await db.templates.get(s.templateId) : undefined;
+    const tpl = s.templateName !== undefined ? { name: s.templateName } : s.templateId ? await db.templates.get(s.templateId) : undefined;
     out.push({ sessionId: s.id, localDate: s.localDate, templateName: tpl?.name, week: s.programWeek, sets, best, painScore: se.painScore ?? null, notes: se.notes });
   }
   return out.sort((a, b) => b.localDate.localeCompare(a.localDate)).slice(0, limit);

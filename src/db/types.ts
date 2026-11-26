@@ -80,6 +80,8 @@ export interface WorkoutSession extends Stamped {
   dateSource?: string;
   /** 'quick' = completed with summary only (no sets); 'full' = logged set by set (Phase 2). */
   logType?: 'quick' | 'full';
+  /** E: the workout's name when it was done – later template renames/deletes never change history. */
+  templateName?: string;
   /** Soft delete (BR-SES-07): set when discarded; restorable for 30 days. */
   discardedAt?: ISOTime | null;
   /** Session status before discard, used by restore. */

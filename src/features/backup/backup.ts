@@ -5,7 +5,8 @@
 import type JSZipT from 'jszip';
 import { z } from 'zod';
 import type { WeightDB } from '../../db/schema';
-import { CURRENT_SCHEMA_VERSION, DATA_STORES } from '../../db/schema';
+import { CURRENT_SCHEMA_VERSION, DATA_STORES, SCHEMA_V1 } from '../../db/schema';
+import { maintenance } from '../progress/recordsOps';
 import { takeSnapshot } from '../../db/open';
 import { sha256Hex, canonicalJson } from '../../domain/hash';
 import { nowIso } from '../../domain/dates';
@@ -90,7 +91,8 @@ export async function createBackup(db: WeightDB, appVersion: string, now = new D
 /** Content fingerprint that ignores bookkeeping stores, so "same data" is detected across backups (BAK-02 AC3). */
 function stripVolatile(data: Record<string, unknown[]>) {
   const { backups: _b, kv, settings, ...rest } = data;
-  const kvStable = (kv as { key: string }[] | undefined)?.filter((k) => !['lastRestoreHash'].includes(k.key)) ?? [];
+  // runtime state (rest timer, records bookkeeping) is not part of "the same data"
+  const kvStable = (kv as { key: string }[] | undefined)?.filter((k) => !['lastRestoreHash', 'restTimer', 'recordsVersion', 'recordsDirty'].includes(k.key)) ?? [];
   const settingsStable = (settings as Record<string, unknown>[] | undefined)?.map(({ lastBackupAt: _l, persistCheckedAt: _p, persistGranted: _g, updatedAt: _u, ...s }) => s) ?? [];
   return { ...rest, kv: kvStable, settings: settingsStable };
 }
@@ -108,17 +110,40 @@ export interface RestorePreview {
   manifest: Manifest; counts: Record<string, number>; identicalToCurrent: boolean; data: Record<string, unknown[]>; photos: Map<string, Blob>;
 }
 
-/** Validate everything before touching the database (BAK-02 AC1). */
+/**
+ * E: limits checked before anything is unpacked (a phone has limited memory; a ZIP can claim to unpack to gigabytes).
+ * Mutable only so tests can lower them.
+ */
+export const LIMITS = { fileBytes: 512 * 2 ** 20, entryBytes: 256 * 2 ** 20, totalBytes: 1536 * 2 ** 20, entries: 20_000, rows: 2_000_000 };
+const mb = (n: number) => `${Math.round(n / 2 ** 20)} MB`;
+/** Unpacked size an entry declares in the ZIP directory (read without unpacking). */
+const entrySize = (f: JSZipT.JSZipObject): number => (f as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
+
+/** Validate everything before touching the database (BAK-02 AC1, Phase 3.1 E). */
 export async function inspectBackup(db: WeightDB, file: Blob): Promise<RestorePreview> {
+  if (!file.size) throw new BackupError('The file is empty – not a Weight backup.');
+  if (file.size > LIMITS.fileBytes) throw new BackupError(`This backup is too large (${mb(file.size)}; the limit is ${mb(LIMITS.fileBytes)}).`);
   let zip: JSZipT;
   const JSZip = await loadZip();
-  try { zip = await JSZip.loadAsync(await file.arrayBuffer()); } catch { throw new BackupError('This is not a ZIP file.'); }
+  try { zip = await JSZip.loadAsync(await file.arrayBuffer()); } catch { throw new BackupError('This is not a ZIP file, or it is damaged.'); }
+  const entries = Object.values(zip.files).filter((f) => !f.dir);
+  if (entries.length > LIMITS.entries) throw new BackupError(`This backup has too many files (${entries.length}).`);
+  let total = 0;
+  for (const f of entries) {
+    const n = entrySize(f);
+    total += n;
+    if (n > LIMITS.entryBytes) throw new BackupError(`${f.name} is too large to restore on this device (${mb(n)}).`);
+  }
+  if (total > LIMITS.totalBytes) throw new BackupError(`This backup is too large to restore on this device (${mb(total)} unpacked).`);
   const mf = zip.file('manifest.json');
   if (!mf) throw new BackupError('manifest.json is missing – not a Weight backup.');
   let manifest: Manifest;
   try { manifest = ManifestZ.parse(JSON.parse(await mf.async('string'))); } catch { throw new BackupError('manifest.json is not valid.'); }
   if (manifest.formatVersion > BACKUP_FORMAT_VERSION) throw new BackupError('This backup was made by a newer version of Weight. Update the app first.');
+  if (manifest.formatVersion < 1) throw new BackupError(`Backup format v${manifest.formatVersion} is not supported.`);
   if (manifest.schemaVersion > CURRENT_SCHEMA_VERSION) throw new BackupError(`Backup schema v${manifest.schemaVersion} is newer than this app (v${CURRENT_SCHEMA_VERSION}).`);
+  if (manifest.schemaVersion < 1) throw new BackupError(`Backup schema v${manifest.schemaVersion} is not supported by this app.`);
+  if (!manifest.files['data.json'] || !zip.file('data.json')) throw new BackupError('data.json is missing – the backup is incomplete. Nothing was changed.');
   const photos = new Map<string, Blob>();
   for (const [path, hash] of Object.entries(manifest.files)) {
     const f = zip.file(path);
@@ -128,21 +153,71 @@ export async function inspectBackup(db: WeightDB, file: Blob): Promise<RestorePr
     if (h !== hash) throw new BackupError(`Checksum mismatch in ${path} – the backup is damaged. Nothing was changed.`);
     if (path.startsWith('photos/')) photos.set(path, new Blob([bytes], { type: path.endsWith('.png') ? 'image/png' : 'image/jpeg' }));
   }
-  const parsed = JSON.parse(await zip.file('data.json')!.async('string')) as { format: string; stores: Record<string, unknown[]> };
-  if (parsed.format !== BACKUP_FORMAT || typeof parsed.stores !== 'object') throw new BackupError('data.json is not a Weight backup.');
+  let parsed: { format: string; schemaVersion?: number; stores: Record<string, unknown[]> };
+  try { parsed = JSON.parse(await zip.file('data.json')!.async('string')); } catch { throw new BackupError('data.json is not valid JSON – the backup is damaged. Nothing was changed.'); }
+  if (!parsed || parsed.format !== BACKUP_FORMAT || typeof parsed.stores !== 'object' || parsed.stores === null || Array.isArray(parsed.stores)) throw new BackupError('data.json is not a Weight backup.');
+  if (parsed.schemaVersion !== undefined && parsed.schemaVersion !== manifest.schemaVersion) throw new BackupError('The schema version in data.json does not match the manifest – the backup is damaged.');
   for (const s of Object.keys(parsed.stores)) if (!DATA_STORES.includes(s)) throw new BackupError(`Unknown store in backup: ${s}`);
   for (const s of DATA_STORES) if (!Array.isArray(parsed.stores[s] ?? [])) throw new BackupError(`Store ${s} is not a list.`);
+  validateRows(parsed.stores);
   checkIntegrity(parsed.stores);
   const current = await collect(db);
   const identical = (await sha256Hex(canonicalJson(stripVolatile(current.data)))) === manifest.dataSha256;
   return { manifest, counts: Object.fromEntries(DATA_STORES.map((s) => [s, (parsed.stores[s] ?? []).length])), identicalToCurrent: identical, data: parsed.stores, photos };
 }
 
-/** Referential integrity (BR-BAK-02). */
+type Rule = (v: unknown) => boolean;
+const str: Rule = (v) => typeof v === 'string' && v.length > 0 && v.length <= 200;
+const optStr: Rule = (v) => v == null || typeof v === 'string';
+const num = (lo: number, hi: number, int = false): Rule => (v) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi && (!int || Number.isInteger(v));
+const opt = (r: Rule): Rule => (v) => v == null || r(v);
+const oneOf = (...xs: unknown[]): Rule => (v) => xs.includes(v);
+const isoDate: Rule = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+/** Field rules for the values calculations depend on (E: a backup cannot bring in NaN, text, or impossible values). */
+const FIELD_RULES: Record<string, Record<string, Rule>> = {
+  sets: { sessionExerciseId: str, orderIndex: num(-1e6, 1e6), setType: oneOf('warmup', 'working', 'drop', 'failure'), weightKg: opt(num(0, 1000)), reps: opt(num(0, 200, true)), rpe: opt(num(1, 10)), completed: oneOf(0, 1), durationSec: opt(num(0, 36000)), distanceM: opt(num(0, 1_000_000)) },
+  sessions: { status: oneOf('active', 'paused', 'completed', 'discarded'), localDate: isoDate, durationMin: opt(num(0, 1440)), programId: optStr, templateId: optStr, kneePain: opt(num(0, 10)), energy: opt(num(0, 10)) },
+  sessionExercises: { sessionId: str, exerciseId: str, orderIndex: num(-1e6, 1e6), status: oneOf('pending', 'in_progress', 'completed', 'skipped', 'replaced', 'not_recorded'), painScore: opt(num(0, 10)) },
+  exercises: { name: str, loadMode: oneOf('total', 'per_hand', 'stack', 'bodyweight', 'assist', 'band', 'none') },
+  templates: { programId: str }, templateExercises: { templateId: str, exerciseId: str }, schedules: { programId: str },
+  bodyMeasurements: { date: isoDate, weightKg: opt(num(10, 700)), waistCm: opt(num(10, 400)) },
+  personalRecords: { exerciseId: str, value: num(-1e9, 1e9) },
+};
+/** Primary key of each store, from the schema ("id", "key", or a compound "[a+b]"). */
+const pkOf = (store: string): string[] => { const k = (SCHEMA_V1[store] ?? 'id').split(',')[0].trim().replace(/^&/, ''); return k.startsWith('[') ? k.slice(1, -1).split('+') : [k]; };
+
+/** E: every row is a record with a valid, unique primary key and sane values; the total is bounded. */
+export function validateRows(st: Record<string, unknown[]>): void {
+  let total = 0;
+  for (const store of DATA_STORES) {
+    const rows = st[store] ?? [];
+    total += rows.length;
+    if (total > LIMITS.rows) throw new BackupError(`This backup has too many records (more than ${LIMITS.rows.toLocaleString('en')}).`);
+    const keys = pkOf(store);
+    const seen = new Set<string>();
+    rows.forEach((row, i) => {
+      const where = `${store} #${i + 1}`;
+      if (row === null || typeof row !== 'object' || Array.isArray(row)) throw new BackupError(`Backup has invalid data: ${where} is not a record.`);
+      const r = row as Record<string, unknown>;
+      for (const k of keys) if (!str(r[k])) throw new BackupError(`Backup has invalid data: ${where} has no valid ${k}.`);
+      const pk = keys.map((k) => r[k]).join('\u0000');
+      if (seen.has(pk)) throw new BackupError(`Backup has invalid data: duplicate id ${keys.map((k) => String(r[k])).join('+')} in ${store}.`);
+      seen.add(pk);
+      for (const [f, rule] of Object.entries(FIELD_RULES[store] ?? {})) if (!rule(r[f])) throw new BackupError(`Backup has invalid data: ${where} has an invalid ${f} (${JSON.stringify(r[f])?.slice(0, 40)}).`);
+    });
+  }
+}
+
+/** Referential integrity (BR-BAK-02; E: every link between records). */
 export function checkIntegrity(st: Record<string, unknown[]>): void {
   const ids = (s: string) => new Set(((st[s] ?? []) as { id: string }[]).map((r) => r.id));
-  const ex = ids('exercises'), ses = ids('sessions'), se = ids('sessionExercises'), tp = ids('templates'), pr = ids('programs');
+  const ex = ids('exercises'), ses = ids('sessions'), se = ids('sessionExercises'), tp = ids('templates'), pr = ids('programs'), mg = ids('muscleGroups');
   const bad = (msg: string) => { throw new BackupError(`Backup is inconsistent: ${msg}`); };
+  for (const r of (st.exerciseMuscles ?? []) as { exerciseId: string; muscleGroupId: string }[]) { if (!ex.has(r.exerciseId)) bad(`muscle link references unknown exercise ${r.exerciseId}`); if (mg.size && !mg.has(r.muscleGroupId)) bad(`muscle link references unknown muscle ${r.muscleGroupId}`); }
+  for (const r of (st.exerciseVideos ?? []) as { id: string; exerciseId: string }[]) if (!ex.has(r.exerciseId)) bad(`video ${r.id} references unknown exercise ${r.exerciseId}`);
+  for (const r of (st.exerciseAlternatives ?? []) as { exerciseId: string; alternativeId: string }[]) if (!ex.has(r.exerciseId) || !ex.has(r.alternativeId)) bad(`alternative ${r.exerciseId} → ${r.alternativeId} references an unknown exercise`);
+  for (const r of (st.schedules ?? []) as { id: string; programId: string }[]) if (!pr.has(r.programId)) bad(`schedule ${r.id} has no program`);
+  for (const r of (st.legacyPerformance ?? []) as { id: string; exerciseId: string }[]) if (!ex.has(r.exerciseId)) bad(`legacy entry ${r.id} references unknown exercise ${r.exerciseId}`);
   for (const r of (st.sets ?? []) as { id: string; sessionExerciseId: string }[]) if (!se.has(r.sessionExerciseId)) bad(`set ${r.id} has no exercise entry`);
   for (const r of (st.sessionExercises ?? []) as { id: string; sessionId: string; exerciseId: string }[]) { if (!ses.has(r.sessionId)) bad(`entry ${r.id} has no session`); if (!ex.has(r.exerciseId)) bad(`entry ${r.id} references unknown exercise ${r.exerciseId}`); }
   for (const r of (st.templateExercises ?? []) as { id: string; templateId: string; exerciseId: string }[]) { if (!tp.has(r.templateId)) bad(`row ${r.id} has no template`); if (!ex.has(r.exerciseId)) bad(`row ${r.id} references unknown exercise ${r.exerciseId}`); }
@@ -169,6 +244,8 @@ export async function restoreBackup(db: WeightDB, pv: RestorePreview): Promise<{
     }
     await db.kv.put({ key: 'lastRestoreHash', value: pv.manifest.dataSha256 });
   });
+  // E / A-03: the same repair as at start-up (stale rest timer, unfinished records recompute)
+  await maintenance(db, { rebuildIfMissing: false }); // a full rebuild, if needed, happens at the next start
   return { status: 'restored', records, snapshotId };
 }
 

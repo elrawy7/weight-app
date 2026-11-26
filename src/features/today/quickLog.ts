@@ -25,7 +25,7 @@ function validate(i: Pick<QuickLogInput, 'durationMin' | 'kneePain' | 'energy'>)
 export async function markDone(db: WeightDB, i: QuickLogInput): Promise<WorkoutSession> {
   if (i.date > i.today) throw new QuickLogError('A future day cannot be marked as done.');
   validate(i);
-  return db.transaction('rw', db.sessions, async () => {
+  return db.transaction('rw', db.sessions, db.templates, async () => {
     const existing = (await db.sessions.where('localDate').equals(i.date).toArray()).find((s) => s.templateId === i.templateId && s.status === 'completed');
     if (existing) throw new QuickLogError('This workout is already marked as done for that day.');
     const t = nowIso();
@@ -33,6 +33,7 @@ export async function markDone(db: WeightDB, i: QuickLogInput): Promise<WorkoutS
       id: uuidv7(), programId: i.programId, templateId: i.templateId, programWeek: i.week ?? undefined, status: 'completed', startedAt: null, endedAt: t, pausedMs: 0,
       localDate: i.date, durationMin: i.durationMin, notes: i.notes.trim(), kneePain: i.kneePain, energy: i.energy, source: 'app', logType: 'quick', createdAt: t, updatedAt: t,
     };
+    if (i.templateId) { const tpl = await db.templates.get(i.templateId); if (tpl) s.templateName = tpl.name; }
     await db.sessions.add(s);
     return s;
   });

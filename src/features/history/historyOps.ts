@@ -4,7 +4,7 @@ import type { Exercise, ID, PersonalRecord, WorkoutSession, WorkoutSessionExerci
 import { nowIso } from '../../domain/dates';
 import { setVolume, epley } from '../../domain/e1rm';
 import { uuidv7 } from '../../domain/uuid';
-import { activeSession, addExerciseToSession, summarize, WorkoutError, DATE_SOURCE_LIVE, type SessionSummary } from '../workout/workoutOps';
+import { activeSession, addExerciseToSession, inBuildTransaction, summarize, WorkoutError, DATE_SOURCE_LIVE, type SessionSummary } from '../workout/workoutOps';
 
 export interface HistoryItem {
   session: WorkoutSession; templateName?: string; programName?: string;
@@ -41,7 +41,7 @@ export async function historyItems(db: WeightDB): Promise<HistoryItem[]> {
     // A-06: an exercise is part of the workout if it was done – including the completed sets of a replaced one
     const exerciseIds = [...new Set(mine.filter((x) => withSets.has(x.id) || (x.status !== 'skipped' && x.status !== 'replaced')).map((x) => x.exerciseId))];
     return {
-      session: s, templateName: s.templateId ? tpls.get(s.templateId) : undefined, programName: s.programId ? progs.get(s.programId) : undefined,
+      session: s, templateName: s.templateName ?? (s.templateId ? tpls.get(s.templateId) : undefined), programName: s.programId ? progs.get(s.programId) : undefined,
       setsDone, volumeKg: Math.round(volumeKg), prCount: prs.filter((p) => p.sessionId === s.id).length,
       exerciseIds, muscles: [...new Set(exerciseIds.flatMap((id) => musclesOf.get(id) ?? []))],
     };
@@ -71,13 +71,17 @@ export async function sessionDetail(db: WeightDB, id: ID): Promise<SessionDetail
     return { se, ex, sets: se.status === 'replaced' ? mine.filter((x) => x.completed === 1) : mine, volumeKg: Math.round(mine.filter((x) => x.completed && x.setType !== 'warmup').reduce((v, x) => v + setVolume(x.weightKg, x.reps, ex?.loadMode ?? 'none'), 0)) };
   });
   return {
-    session: s, templateName: s.templateId ? (await db.templates.get(s.templateId))?.name : undefined, programName: s.programId ? (await db.programs.get(s.programId))?.name : undefined,
+    session: s, templateName: s.templateName ?? (s.templateId ? (await db.templates.get(s.templateId))?.name : undefined), programName: s.programId ? (await db.programs.get(s.programId))?.name : undefined,
     exercises, summary: await summarize(db, id), records: await db.personalRecords.where('sessionId').equals(id).toArray(),
   };
 }
 
 /** HIST-05: a new active session today with the same exercises and targets; previous values come from the latest performance. */
-export async function repeatSession(db: WeightDB, sourceId: ID, today: string): Promise<WorkoutSession> {
+/** HIST-04 repeat. Internal finding I-03: created in one transaction, like startWorkout (A-01). */
+export function repeatSession(db: WeightDB, sourceId: ID, today: string): Promise<WorkoutSession> {
+  return inBuildTransaction(db, () => repeatSessionTx(db, sourceId, today));
+}
+async function repeatSessionTx(db: WeightDB, sourceId: ID, today: string): Promise<WorkoutSession> {
   if (await activeSession(db)) throw new WorkoutError('Another workout is still in progress. Continue or finish it first.');
   const src = await db.sessions.get(sourceId);
   if (!src) throw new WorkoutError('Session not found.');
@@ -85,7 +89,9 @@ export async function repeatSession(db: WeightDB, sourceId: ID, today: string): 
   const s: WorkoutSession = {
     id: uuidv7(), programId: src.programId, templateId: src.templateId, programWeek: src.programWeek, status: 'active', startedAt: t, endedAt: null, pausedMs: 0,
     localDate: today, notes: '', source: 'app', logType: 'full', lastActivityAt: t, pausedAt: null, createdAt: t, updatedAt: t, dateSource: DATE_SOURCE_LIVE,
+    ...(src.templateName !== undefined ? { templateName: src.templateName } : {}),
   };
+  if (s.templateId && s.templateName === undefined) { const tpl = await db.templates.get(s.templateId); if (tpl) s.templateName = tpl.name; }
   await db.sessions.add(s);
   const ses = (await db.sessionExercises.where('sessionId').equals(sourceId).toArray()).filter((x) => x.status !== 'replaced').sort((a, b) => a.orderIndex - b.orderIndex);
   for (const [i, se] of ses.entries()) {

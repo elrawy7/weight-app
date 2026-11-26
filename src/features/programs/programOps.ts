@@ -63,9 +63,11 @@ export async function addTemplate(db: WeightDB, programId: string, name: string)
 }
 
 export async function deleteTemplate(db: WeightDB, id: string): Promise<void> {
-  await db.transaction('rw', [db.templates, db.templateExercises, db.schedules], async () => {
+  await db.transaction('rw', [db.templates, db.templateExercises, db.schedules, db.sessions], async () => {
     const tp = await db.templates.get(id);
     if (!tp) return;
+    // E: logged workouts keep the name they were done under
+    await db.sessions.where('templateId').equals(id).filter((s) => s.templateName === undefined).modify((s) => { s.templateName = tp.name; });
     await db.templateExercises.where('templateId').equals(id).delete();
     await db.templates.delete(id);
     await db.schedules.where('programId').equals(tp.programId).modify((s) => {
