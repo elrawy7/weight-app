@@ -1,0 +1,17 @@
+# C: keep GitHub Actions and npm dependencies current. Updates arrive as pull requests that run the full CI
+# (audit, lint, types, unit, build, e2e) before anything is merged – nothing is upgraded blindly.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ['*'] }
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      dev-tools:
+        dependency-type: development
+        update-types: [minor, patch]
