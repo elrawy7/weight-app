@@ -3,7 +3,7 @@
  * history purge (HIST-04). Everything derives from sessions/sets – records can always be rebuilt.
  */
 import type { WeightDB } from '../../db/schema';
-import type { Exercise, ID, PersonalRecord, WorkoutSession } from '../../db/types';
+import type { Exercise, ID, PersonalRecord, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from '../../db/types';
 import { detectPRs, perfVolume, sessionVolumePRs, type Performance, type PREvent } from '../../domain/records';
 import { getSettings } from '../../db/defaults';
 import { freezeTemplateNames } from '../workout/sessionNames';
@@ -14,17 +14,48 @@ export const SESSION_KEY = '__session';
 export interface PerfOptions { includeSessionId?: ID }
 
 /** Completed (not replaced/skipped) performances, completed sets only. `includeSessionId` adds a running session. */
-export async function performancesOf(db: WeightDB, exerciseIds: ID[] | null, o: PerfOptions = {}): Promise<Performance[]> {
-  const ses = exerciseIds ? await db.sessionExercises.where('exerciseId').anyOf(exerciseIds).toArray() : await db.sessionExercises.toArray();
-  const sessions = new Map((await db.sessions.bulkGet([...new Set(ses.map((x) => x.sessionId))])).filter((s): s is WorkoutSession => !!s).map((s) => [s.id, s]));
+/** E-06: with years of history, one full read of a table is much faster than an index lookup with thousands of keys. */
+const BULK = 400;
+async function setsOf(db: WeightDB, seIds: ID[]): Promise<WorkoutSet[]> {
+  if (!seIds.length) return [];
+  // index lookup when the keys are a small part of all exercise entries (less memory → no long garbage-collection pause
+  // on the next tap); one full read when they are most of them
+  if (seIds.length <= BULK || seIds.length * 4 < (await db.sessionExercises.count())) {
+    // one keyed read per entry, all queued at once in one transaction (much faster than a cursor walking many keys)
+    return db.transaction('r', db.sets, async () => (await Promise.all(seIds.map((k) => db.sets.where('sessionExerciseId').equals(k).toArray()))).flat());
+  }
+  const want = new Set(seIds);
+  return (await db.sets.toArray()).filter((x) => want.has(x.sessionExerciseId));
+}
+async function sessionsOf(db: WeightDB, ids: ID[]): Promise<Map<ID, WorkoutSession>> {
+  const list = ids.length <= BULK ? (await db.sessions.bulkGet(ids)).filter((s): s is WorkoutSession => !!s) : await db.sessions.toArray();
+  const want = new Set(ids);
+  return new Map(list.filter((s) => want.has(s.id)).map((s) => [s.id, s]));
+}
+
+export interface PerfOptionsRange extends PerfOptions { from?: string; to?: string }
+
+export async function performancesOf(db: WeightDB, exerciseIds: ID[] | null, o: PerfOptionsRange = {}): Promise<Performance[]> {
+  let ses: WorkoutSessionExercise[];
+  let sessions: Map<ID, WorkoutSession>;
+  if (o.from || o.to) {
+    // E-06: a date range (e.g. this week) reads only those sessions
+    const inRange = await db.sessions.where('localDate').between(o.from ?? '0000-00-00', o.to ?? '9999-99-99', true, true).toArray();
+    sessions = new Map(inRange.map((s) => [s.id, s]));
+    ses = inRange.length ? await db.sessionExercises.where('sessionId').anyOf(inRange.map((s) => s.id)).toArray() : [];
+    if (exerciseIds) { const want = new Set(exerciseIds); ses = ses.filter((x) => want.has(x.exerciseId)); }
+  } else {
+    ses = exerciseIds ? await db.sessionExercises.where('exerciseId').anyOf(exerciseIds).toArray() : await db.sessionExercises.toArray();
+    sessions = await sessionsOf(db, [...new Set(ses.map((x) => x.sessionId))]);
+  }
   // A-06 / BR-SES-11: completed sets are facts – they count whatever happened to the exercise afterwards
   const keep = ses.filter((se) => { const s = sessions.get(se.sessionId); return s && (s.status === 'completed' || s.id === o.includeSessionId); });
-  const sets = keep.length ? await db.sets.where('sessionExerciseId').anyOf(keep.map((x) => x.id)).toArray() : [];
-  const bySe = new Map<ID, typeof sets>();
+  const sets = await setsOf(db, keep.map((x) => x.id));
+  const bySe = new Map<ID, WorkoutSet[]>();
   const rows = new Map<ID, number>();
   for (const x of sets) {
     if (x.setType !== 'warmup') rows.set(x.sessionExerciseId, (rows.get(x.sessionExerciseId) ?? 0) + 1);
-    if (x.completed === 1) bySe.set(x.sessionExerciseId, [...(bySe.get(x.sessionExerciseId) ?? []), x]);
+    if (x.completed === 1) { const l = bySe.get(x.sessionExerciseId); if (l) l.push(x); else bySe.set(x.sessionExerciseId, [x]); }
   }
   return keep.map((se) => {
     const s = sessions.get(se.sessionId)!;

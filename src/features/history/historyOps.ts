@@ -16,8 +16,13 @@ export async function historyItems(db: WeightDB): Promise<HistoryItem[]> {
   const sessions = (await db.sessions.where('status').equals('completed').toArray()).sort((a, b) => `${b.localDate}|${b.startedAt ?? ''}`.localeCompare(`${a.localDate}|${a.startedAt ?? ''}`));
   if (!sessions.length) return [];
   const ids = sessions.map((s) => s.id);
-  const ses = await db.sessionExercises.where('sessionId').anyOf(ids).toArray();
-  const sets = ses.length ? await db.sets.where('sessionExerciseId').anyOf(ses.map((x) => x.id)).toArray() : [];
+  // E-06: whole-table reads + maps (index lookups with thousands of keys and per-session filtering were the slow part)
+  const idSet = new Set(ids);
+  const ses = (await db.sessionExercises.toArray()).filter((x) => idSet.has(x.sessionId));
+  const seSet = new Set(ses.map((x) => x.id));
+  const sets = ses.length ? (await db.sets.toArray()).filter((x) => seSet.has(x.sessionExerciseId)) : [];
+  const sesBySession = new Map<ID, WorkoutSessionExercise[]>();
+  for (const x of ses) { const l = sesBySession.get(x.sessionId); if (l) l.push(x); else sesBySession.set(x.sessionId, [x]); }
   const exs = new Map((await db.exercises.toArray()).map((e) => [e.id, e]));
   const links = await db.exerciseMuscles.toArray();
   const parentOf = new Map((await db.muscleGroups.toArray()).map((g) => [g.id, g.parentId || g.id]));
@@ -25,11 +30,12 @@ export async function historyItems(db: WeightDB): Promise<HistoryItem[]> {
   for (const l of links) if (l.role === 'primary') musclesOf.set(l.exerciseId, [...(musclesOf.get(l.exerciseId) ?? []), parentOf.get(l.muscleGroupId) ?? l.muscleGroupId]);
   const tpls = new Map((await db.templates.toArray()).map((t) => [t.id, t.name]));
   const progs = new Map((await db.programs.toArray()).map((p) => [p.id, p.name]));
-  const prs = await db.personalRecords.where('sessionId').anyOf(ids).toArray();
+  const prCount = new Map<ID, number>();
+  for (const p of await db.personalRecords.toArray()) if (idSet.has(p.sessionId)) prCount.set(p.sessionId, (prCount.get(p.sessionId) ?? 0) + 1);
   const setsBySe = new Map<ID, WorkoutSet[]>();
-  for (const x of sets) setsBySe.set(x.sessionExerciseId, [...(setsBySe.get(x.sessionExerciseId) ?? []), x]);
+  for (const x of sets) { const l = setsBySe.get(x.sessionExerciseId); if (l) l.push(x); else setsBySe.set(x.sessionExerciseId, [x]); }
   return sessions.map((s) => {
-    const mine = ses.filter((x) => x.sessionId === s.id);
+    const mine = sesBySession.get(s.id) ?? [];
     let setsDone = 0, volumeKg = 0;
     const withSets = new Set<ID>();
     for (const se of mine) for (const x of setsBySe.get(se.id) ?? []) {
@@ -42,7 +48,7 @@ export async function historyItems(db: WeightDB): Promise<HistoryItem[]> {
     const exerciseIds = [...new Set(mine.filter((x) => withSets.has(x.id) || (x.status !== 'skipped' && x.status !== 'replaced')).map((x) => x.exerciseId))];
     return {
       session: s, templateName: s.templateName ?? (s.templateId ? tpls.get(s.templateId) : undefined), programName: s.programId ? progs.get(s.programId) : undefined,
-      setsDone, volumeKg: Math.round(volumeKg), prCount: prs.filter((p) => p.sessionId === s.id).length,
+      setsDone, volumeKg: Math.round(volumeKg), prCount: prCount.get(s.id) ?? 0,
       exerciseIds, muscles: [...new Set(exerciseIds.flatMap((id) => musclesOf.get(id) ?? []))],
     };
   });

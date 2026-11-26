@@ -21,7 +21,7 @@ import { Scale } from '../today/QuickLogSheet';
 import type { Exercise, ExerciseVideo, LegacyPerformance, WorkoutProgram, WorkoutSession, WorkoutSessionExercise, WorkoutSet } from '../../db/types';
 import { suggest, type RecentPerf } from '../../domain/progression';
 import { epley } from '../../domain/e1rm';
-import { alternativeNames, deloadState, latestBodyweight, recentPerfs, weightContext } from './suggestionCtx';
+import { alternativeNames, deloadState, historyFor, latestBodyweight, weightContext } from './suggestionCtx';
 import { useAutosave } from './autosave';
 import * as W from './workoutOps';
 import { RestTimerPanel, useHeightVar, useNow, mmss, type NextUp } from './RestTimer';
@@ -31,7 +31,7 @@ import { prevList, setLabel } from './format';
 import { unlockAudio } from './alerts';
 import { FinishSheet } from './FinishSheet';
 
-interface Row { se: WorkoutSessionExercise; ex: Exercise | undefined; sets: WorkoutSet[]; video?: ExerciseVideo; muscles: string[]; legacy?: LegacyPerformance; best: W.Best | null; recent: RecentPerf[]; alt?: string; deloadDismissed: boolean; bodyweightKg: number | null }
+interface Row { se: WorkoutSessionExercise; ex: Exercise | undefined; sets: WorkoutSet[]; video?: ExerciseVideo; muscles: string[]; legacy?: LegacyPerformance; best: W.Best | null; recent: RecentPerf[]; alt?: string; deloadDismissed: boolean; bodyweightKg: number | null; historyReady: boolean }
 
 const err = (e: unknown) => notifications.show({ color: 'red', message: e instanceof Error ? e.message : t('common.error') });
 
@@ -67,35 +67,63 @@ export function WorkoutPage() {
   const [discardOpen, setDiscardOpen] = useState(false);
   const [warmOpen, setWarmOpen] = useState<boolean | null>(null); // null = default for the layout (open in expanded, closed in compact)
 
-  const data = useLiveQuery(async () => {
+  // E-06: two loads. LIVE – this workout only (session, its exercises and sets): cheap, re-runs on every tap.
+  const live0 = useLiveQuery(async () => {
     const s = await db.sessions.get(id);
     if (!s) return { s: undefined } as const;
     const ses = (await db.sessionExercises.where('sessionId').equals(id).toArray()).sort((a, b) => a.orderIndex - b.orderIndex);
     const exIds = [...new Set(ses.map((x) => x.exerciseId))];
     const exs = new Map((await db.exercises.bulkGet(exIds)).filter((e): e is Exercise => !!e).map((e) => [e.id, e]));
     const sets = ses.length ? await db.sets.where('sessionExerciseId').anyOf(ses.map((x) => x.id)).toArray() : [];
-    const videos = exIds.length ? await db.exerciseVideos.where('exerciseId').anyOf(exIds).toArray() : [];
-    const mus = exIds.length ? await db.exerciseMuscles.where('exerciseId').anyOf(exIds).toArray() : [];
-    const groups = new Map((await db.muscleGroups.toArray()).map((m) => [m.id, m.name]));
-    const legacy = exIds.length ? await db.legacyPerformance.where('exerciseId').anyOf(exIds).toArray() : [];
     const tpl = s.templateId ? await db.templates.get(s.templateId) : undefined;
     const program = s.programId ? await db.programs.get(s.programId) : undefined;
     const warmChecked = ((await db.kv.get(`warmup:${s.localDate}`))?.value as string[] | undefined) ?? [];
     const warmEx = tpl ? await db.exercises.bulkGet(tpl.warmup.map((w) => w.exerciseId ?? '__none')) : [];
-    const bests = await Promise.all(ses.map((x) => (x.cardio ? null : W.bestBefore(db, x.exerciseId, s))));
-    const recents = await recentPerfs(db, exIds, s);
-    const alts = await alternativeNames(db, exIds);
     const dismissed = ((await db.kv.get('deloadDismissed'))?.value as Record<string, string> | undefined) ?? {};
-    const bodyweightKg = await latestBodyweight(db);
-    const rows: Row[] = ses.map((se, i) => ({
-      se, ex: exs.get(se.exerciseId), sets: sets.filter((x) => x.sessionExerciseId === se.id).sort((a, b) => a.orderIndex - b.orderIndex),
-      video: videos.find((v) => v.exerciseId === se.exerciseId && v.isPrimary) ?? videos.find((v) => v.exerciseId === se.exerciseId),
-      muscles: mus.filter((m) => m.exerciseId === se.exerciseId && m.role === 'primary').map((m) => groups.get(m.muscleGroupId) ?? m.muscleGroupId),
-      legacy: legacy.find((l) => l.exerciseId === se.exerciseId), best: bests[i], recent: recents.get(se.exerciseId) ?? [], alt: alts.get(se.exerciseId),
-      deloadDismissed: !!dismissed[se.exerciseId] && dismissed[se.exerciseId] === (recents.get(se.exerciseId)?.[0]?.localDate ?? ''), bodyweightKg,
-    }));
-    return { s, rows, tpl, program, warmChecked, warmEx } as const;
+    return { s, ses, exIds, exs, sets, tpl, program, warmChecked, warmEx, dismissed } as const;
   }, [db, id]);
+  // HISTORY – earlier workouts (bests, recent performances, videos, muscles…): loaded once per exercise list. It does
+  // not change while logging, so it never makes a ✓ wait for years of history.
+  const exKey = live0?.s ? `${live0.s.localDate}|${live0.s.startedAt}|${live0.exIds.join(',')}` : '';
+  const [hist, setHist] = useState<{ key: string; bests: Map<string, W.Best>; recents: Map<string, RecentPerf[]>; alts: Map<string, string>; videos: ExerciseVideo[]; mus: { exerciseId: string; muscleGroupId: string; role: string }[]; groups: Map<string, string>; legacy: LegacyPerformance[]; bodyweightKg: number | null; loaded: Set<string> } | null>(null);
+  useEffect(() => {
+    if (!live0?.s || !exKey) return;
+    const s0 = live0.s, exIds = live0.exIds;
+    let cancelled = false;
+    void (async () => {
+      const [{ bests, recents }, alts, videos, mus, groups, legacy, bodyweightKg] = await Promise.all([
+        historyFor(db, exIds, s0), alternativeNames(db, exIds),
+        exIds.length ? db.exerciseVideos.where('exerciseId').anyOf(exIds).toArray() : Promise.resolve([]),
+        exIds.length ? db.exerciseMuscles.where('exerciseId').anyOf(exIds).toArray() : Promise.resolve([]),
+        db.muscleGroups.toArray().then((g) => new Map(g.map((m) => [m.id, m.name]))),
+        exIds.length ? db.legacyPerformance.where('exerciseId').anyOf(exIds).toArray() : Promise.resolve([]),
+        latestBodyweight(db),
+      ]);
+      if (!cancelled) setHist({ key: exKey, bests, recents, alts, videos, mus, groups, legacy, bodyweightKg, loaded: new Set(exIds) });
+    })();
+    return () => { cancelled = true; };
+  }, [db, exKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const data = useMemo(() => {
+    if (!live0) return undefined;
+    if (!live0.s) return { s: undefined } as const;
+    const { s, ses, exs, sets, tpl, program, warmChecked, warmEx, dismissed } = live0;
+    // keep showing what is already loaded while a changed exercise list reloads (no flicker for the others)
+    const h = hist && hist.key.split('|').slice(0, 2).join('|') === exKey.split('|').slice(0, 2).join('|') ? hist : null;
+    const rows: Row[] = ses.map((se) => {
+      const ready = !!h && h.loaded.has(se.exerciseId);
+      const recent = ready ? h!.recents.get(se.exerciseId) ?? [] : [];
+      return {
+        se, ex: exs.get(se.exerciseId), sets: sets.filter((x) => x.sessionExerciseId === se.id).sort((a, b) => a.orderIndex - b.orderIndex),
+        video: h ? h.videos.find((v) => v.exerciseId === se.exerciseId && v.isPrimary) ?? h.videos.find((v) => v.exerciseId === se.exerciseId) : undefined,
+        muscles: h ? h.mus.filter((m) => m.exerciseId === se.exerciseId && m.role === 'primary').map((m) => h.groups.get(m.muscleGroupId) ?? m.muscleGroupId) : [],
+        legacy: h?.legacy.find((l) => l.exerciseId === se.exerciseId), best: se.cardio ? null : h?.bests.get(se.exerciseId) ?? null, recent, alt: h?.alts.get(se.exerciseId),
+        deloadDismissed: !!dismissed[se.exerciseId] && dismissed[se.exerciseId] === (recent[0]?.localDate ?? ''), bodyweightKg: h?.bodyweightKg ?? null,
+        historyReady: ready,
+      };
+    });
+    return { s, rows, tpl, program, warmChecked, warmEx } as const;
+  }, [live0, hist, exKey]);
 
   const s = data?.s;
   const running = s?.status === 'active' || s?.status === 'paused';
@@ -339,7 +367,7 @@ function ExerciseBlock({ row, session, program, index, count, targetRpe, compact
   const restSkipped = !!se.skippedRemaining; // A-06: completed sets kept, remaining sets skipped
   const running = session.status === 'active' || session.status === 'paused';
   const weights = ex ? weightContext(ex, incKg, settings) : { incrementKg: incKg };
-  const sug = running && ex ? suggest({
+  const sug = running && ex && row.historyReady ? suggest({
     exercise: { status: ex.status, loadMode: ex.loadMode, strategy: ex.strategy, isMain: ex.mechanic === 'compound' }, recent: row.recent, targetReps: se.snapshot?.targetReps, targetRpe,
     today: session.localDate, weights, defaultStrategy: settings.defaultStrategy, incrementSteps: settings.incrementSteps, deload: deloadState(program, session.localDate),
     deloadPct: settings.deloadPct, deloadSets: settings.deloadSets, alternativeName: row.alt, noDeload: row.deloadDismissed, bodyweightKg: row.bodyweightKg ?? undefined,

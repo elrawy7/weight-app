@@ -40,7 +40,7 @@ export function FinishSheet({ opened, onClose, session, live, stale, onSaved }: 
     setBusy(true); setError(null);
     try {
       const extra = { kneePain: knee, energy, notes, durationMin: minutes === '' ? null : Number(minutes) };
-      if (running) await W.finishSession(db, session.id, { ...extra, endedAt: stale && session.lastActivityAt ? session.lastActivityAt : undefined });
+      if (running) await W.finishSession(db, session.id, { ...extra, endedAt: stale && session.lastActivityAt ? session.lastActivityAt : undefined }, { background: true });
       else await W.updateSummary(db, session.id, extra);
       onSaved();
       // BAK-03 AC1 / D-05: the backup reminder on Today now says when new records are not backed up yet (no toast over the screen)

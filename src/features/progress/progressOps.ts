@@ -100,7 +100,7 @@ export async function dashboard(db: WeightDB, today: ISODate): Promise<Dashboard
   const doneDates = new Set(completed.map((s) => s.localDate));
   const wk = weekBounds(today, settings.weekStartsOn);
   const comp = completion(schedule, program?.weeks ?? [], wk.start, wk.end, doneDates);
-  const perfs = (await performancesOf(db, null)).filter((p) => p.localDate >= wk.start && p.localDate <= wk.end);
+  const perfs = await performancesOf(db, null, { from: wk.start, to: wk.end }); // E-06: this week only
   const exs = new Map((await db.exercises.toArray()).map((e) => [e.id, e]));
   let vol = 0;
   for (const p of perfs) for (const s of working(p)) {

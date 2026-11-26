@@ -189,7 +189,7 @@ export const en = {
   // Phase 3 – history
   'hist.list': 'List', 'hist.calendar': 'Calendar', 'hist.program': 'Program', 'hist.muscle': 'Muscle', 'hist.exercise': 'Exercise', 'hist.showing': 'Showing {n} of {total} workouts',
   'hist.prevMonth': 'Previous month', 'hist.nextMonth': 'Next month', 'hist.nWorkouts': '{n} workouts', 'hist.noneThatDay': 'No workout on {date}.', 'hist.tapDay': 'Tap a day to see its workouts.',
-  'hist.noMatch': 'No workouts match these filters', 'hist.clearFilters': 'Clear filters', 'hist.clearFilter': 'Clear filter', 'hist.quick': 'marked done', 'hist.edited': 'Edited', 'hist.compare': 'Compare',
+  'hist.noMatch': 'No workouts match these filters', 'hist.clearFilters': 'Clear filters', 'hist.clearFilter': 'Clear filter', 'hist.quick': 'marked done', 'hist.edited': 'Edited', 'hist.showMore': 'Show {n} more ({left} left)', 'hist.compare': 'Compare',
   'hist.editedOn': 'Edited {date}', 'hist.duration': 'Duration', 'hist.kneeEnergy': 'Knee {knee}/10 · energy {energy}/5', 'hist.prsHere': '{n} personal records in this workout',
   'hist.edit': 'Edit weights & reps', 'hist.repeat': 'Repeat this workout', 'hist.compareWith': 'Compare with…', 'hist.nothingToCompare': 'No other workouts yet.',
   'cmp.title': 'Compare workouts', 'cmp.first': 'First workout', 'cmp.second': 'Second workout', 'cmp.pickTwo': 'Pick two workouts to compare.', 'cmp.same': 'same',

@@ -137,6 +137,17 @@ const newSet = (seId: ID, order: number, setType: SetType, t: string): WorkoutSe
 });
 
 /** Every change: activity timestamp; on a completed session also the "edited" marker and a PR recompute (HIST-03, BR-PR-05). */
+/** Inside a transaction that includes `sessions`: last activity of a running workout. */
+async function touchActive(db: WeightDB, sessionId: ID) {
+  const s = await db.sessions.get(sessionId);
+  if (s && s.status !== 'completed' && s.status !== 'discarded') { const t = nowIso(); await db.sessions.update(sessionId, { lastActivityAt: t, updatedAt: t }); }
+}
+/** After a change to an already logged workout: mark edited and rebuild that exercise's records. */
+async function touchCompleted(db: WeightDB, sessionId: ID, exerciseId?: ID) {
+  const s = await db.sessions.get(sessionId);
+  if (s?.status === 'completed') await touch(db, sessionId, exerciseId);
+}
+
 async function touch(db: WeightDB, sessionId: ID, exerciseId?: ID) {
   const t = nowIso();
   const s = await db.sessions.get(sessionId);
@@ -174,13 +185,15 @@ export function validateSetPatch(patch: SetPatch): SetPatch {
 export async function updateSet(db: WeightDB, setId: ID, patch: SetPatch) {
   let clean: SetPatch;
   try { clean = validateSetPatch(patch); } catch (e) { return Promise.reject(e); }
-  const se = await db.transaction('rw', db.sets, db.sessionExercises, async () => {
+  const se = await db.transaction('rw', db.sets, db.sessionExercises, db.sessions, async () => {
     const set = await db.sets.get(setId);
     if (!set) throw new WorkoutError('Set not found.');
     await db.sets.update(setId, { ...clean, updatedAt: nowIso() });
-    return db.sessionExercises.get(set.sessionExerciseId);
+    const se = await db.sessionExercises.get(set.sessionExerciseId);
+    if (se) await touchActive(db, se.sessionId);
+    return se;
   });
-  if (se) await touch(db, se.sessionId, se.exerciseId);
+  if (se) await touchCompleted(db, se.sessionId, se.exerciseId);
 }
 
 /**
@@ -219,7 +232,8 @@ export const isFailedAttempt = (s: Pick<WorkoutSet, 'completed' | 'reps' | 'dura
 
 export async function toggleSetComplete(db: WeightDB, setId: ID, ghost: { weightKg: number | null; reps: number | null; durationSec?: number | null }, measure: 'reps' | 'duration' = 'reps'): Promise<{ completed: boolean; startRest: boolean; restSec: number }> {
   // read + write in one transaction opened now → ordered after any edit made before this tap (A-05)
-  const { se, completed, set } = await db.transaction('rw', db.sets, db.sessionExercises, db.exercises, db.kv, async () => {
+  // E-06: the set, the exercise status and the session's activity time change in ONE transaction (one screen update)
+  const { se, completed, set } = await db.transaction('rw', [db.sets, db.sessionExercises, db.exercises, db.kv, db.sessions], async () => {
     const set = await db.sets.get(setId);
     if (!set) throw new WorkoutError('Set not found.');
     const se = (await db.sessionExercises.get(set.sessionExerciseId))!;
@@ -229,16 +243,19 @@ export async function toggleSetComplete(db: WeightDB, setId: ID, ghost: { weight
       // A-07: undoing the set that started the rest timer stops it
       const cur = (await db.kv.get(REST_KEY))?.value as RestTimerState | undefined;
       if (cur?.setId === setId) await db.kv.delete(REST_KEY);
+      await refreshExerciseStatus(db, se.id);
+      await touchActive(db, se.sessionId);
       return { se, completed: false, set };
     }
     const ex = await db.exercises.get(se.exerciseId);
     const vals = completedValues(ex, set, ghost, measure);
     validateSetPatch(vals as SetPatch);
     await db.sets.update(setId, { ...vals, completed: 1, completedAt: t, updatedAt: t });
+    await refreshExerciseStatus(db, se.id);
+    await touchActive(db, se.sessionId);
     return { se, completed: true, set };
   });
-  await refreshExerciseStatus(db, se.id);
-  await touch(db, se.sessionId, se.exerciseId);
+  await touchCompleted(db, se.sessionId, se.exerciseId);
   const restSec = se.snapshot?.restSec ?? 90;
   if (!completed) return { completed: false, startRest: false, restSec: 0 };
   if (set.setType === 'warmup') return { completed: true, startRest: false, restSec };
@@ -455,7 +472,11 @@ export async function summarize(db: WeightDB, id: ID): Promise<SessionSummary> {
 }
 
 /** BR-SES-06: finish; exercises with no completed set become skipped (unless cardio done). */
-export async function finishSession(db: WeightDB, id: ID, extra: { kneePain: number | null; energy: number | null; notes: string; endedAt?: string; durationMin?: number | null }) {
+/**
+ * `background`: return as soon as the workout is saved and rebuild its records afterwards (E-06: with years of history
+ * the rebuild takes a moment; the dirty marker written in the same transaction guarantees it completes – A-03).
+ */
+export async function finishSession(db: WeightDB, id: ID, extra: { kneePain: number | null; energy: number | null; notes: string; endedAt?: string; durationMin?: number | null }, o: { background?: boolean } = {}) {
   if (extra.durationMin != null && (!Number.isFinite(extra.durationMin) || extra.durationMin < 0 || extra.durationMin > 600)) throw new WorkoutError('Minutes must be between 0 and 600.');
   if (extra.kneePain != null && (extra.kneePain < 0 || extra.kneePain > 10)) throw new WorkoutError('Knee pain must be 0–10.');
   if (extra.energy != null && (extra.energy < 1 || extra.energy > 5)) throw new WorkoutError('Energy must be 1–5.');
@@ -481,7 +502,8 @@ export async function finishSession(db: WeightDB, id: ID, extra: { kneePain: num
       kneePain: extra.kneePain, energy: extra.energy, notes: extra.notes.trim(), logType: 'full', updatedAt: nowIso(),
     });
   });
-  await recomputeRecords(db, exIds); // PR-01; if this is interrupted the dirty marker makes start-up finish it
+  const rebuild = recomputeRecords(db, exIds); // PR-01; if this is interrupted the dirty marker makes start-up finish it
+  if (o.background) void rebuild.catch(() => undefined); else await rebuild;
 }
 
 
@@ -601,23 +623,33 @@ export interface Best { maxWeightKg: number; maxE1rm: number; maxReps: number }
 
 /** Best values of an exercise in completed sessions strictly before `before` (BR-PR: same load mode only, warm-ups excluded). */
 export async function bestBefore(db: WeightDB, exerciseId: ID, before: Pick<WorkoutSession, 'id' | 'localDate' | 'startedAt'>): Promise<Best | null> {
-  const ex = await db.exercises.get(exerciseId);
-  const ses = await db.sessionExercises.where('exerciseId').equals(exerciseId).toArray();
+  return (await bestsBefore(db, [exerciseId], before)).get(exerciseId) ?? null;
+}
+
+/**
+ * Bests of several exercises before a session, with three bulk reads (E-06: the per-session loop issued one query per
+ * past workout – thousands with years of history – and made every ✓ wait for it).
+ */
+export async function bestsBefore(db: WeightDB, exerciseIds: ID[], before: Pick<WorkoutSession, 'id' | 'localDate' | 'startedAt'>): Promise<Map<ID, Best>> {
+  const out = new Map<ID, Best>();
+  if (!exerciseIds.length) return out;
+  const exs = new Map((await db.exercises.bulkGet(exerciseIds)).filter((e): e is Exercise => !!e).map((e) => [e.id, e]));
+  const ses = await db.sessionExercises.where('exerciseId').anyOf(exerciseIds).toArray();
   const sessions = new Map((await db.sessions.bulkGet([...new Set(ses.map((x) => x.sessionId))])).filter((s): s is WorkoutSession => !!s).map((s) => [s.id, s]));
   const limit = sortKey(before);
-  let best: Best | null = null;
-  for (const se of ses) {
-    const s = sessions.get(se.sessionId);
-    if (!s || s.id === before.id || s.status !== 'completed' || sortKey(s) >= limit) continue;
-    const sets = (await db.sets.where('sessionExerciseId').equals(se.id).toArray()).filter((x) => x.completed === 1 && x.setType !== 'warmup' && !isFailedAttempt(x));
-    for (const x of sets) {
-      best ??= { maxWeightKg: 0, maxE1rm: 0, maxReps: 0 };
-      best.maxWeightKg = Math.max(best.maxWeightKg, x.weightKg ?? 0);
-      best.maxReps = Math.max(best.maxReps, x.reps ?? 0);
-      best.maxE1rm = Math.max(best.maxE1rm, epley(x.weightKg, x.reps, ex?.loadMode ?? 'total') ?? 0);
-    }
+  const keep = new Map(ses.filter((se) => { const s = sessions.get(se.sessionId); return !!s && s.id !== before.id && s.status === 'completed' && sortKey(s) < limit; }).map((se) => [se.id, se.exerciseId]));
+  if (!keep.size) return out;
+  const sets = await db.sets.where('sessionExerciseId').anyOf([...keep.keys()]).toArray();
+  for (const x of sets) {
+    if (x.completed !== 1 || x.setType === 'warmup' || isFailedAttempt(x)) continue;
+    const exId = keep.get(x.sessionExerciseId)!;
+    const b = out.get(exId) ?? { maxWeightKg: 0, maxE1rm: 0, maxReps: 0 };
+    b.maxWeightKg = Math.max(b.maxWeightKg, x.weightKg ?? 0);
+    b.maxReps = Math.max(b.maxReps, x.reps ?? 0);
+    b.maxE1rm = Math.max(b.maxE1rm, epley(x.weightKg, x.reps, exs.get(exId)?.loadMode ?? 'total') ?? 0);
+    out.set(exId, b);
   }
-  return best;
+  return out;
 }
 
 export interface PR { exerciseId: ID; exerciseName: string; kind: PRType; value: number; previous: number; unit: string; setId?: ID; weightKg?: number }

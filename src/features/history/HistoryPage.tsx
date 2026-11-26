@@ -1,5 +1,5 @@
 /** HIST-01: history list and month calendar, filterable by program, muscle and exercise. */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActionIcon, Badge, Button, Card, Group, SegmentedControl, Select, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
@@ -50,6 +50,7 @@ function monthGrid(month: string, weekStartsOn: (typeof WEEKDAYS)[number]): stri
   const start = addDays(first, -((firstIdx - startIdx + 7) % 7));
   return Array.from({ length: 42 }, (_, i) => addDays(start, i));
 }
+const PAGE = 50;
 const shiftMonth = (m: string, n: number) => { const d = new Date(`${m}-01T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 7); };
 
 export function HistoryPage() {
@@ -71,6 +72,8 @@ export function HistoryPage() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const [day, setDay] = useState<string | null>(null);
   const items = useMemo(() => (data ? filterHistory(data.items, filter) : []), [data, filter.programId, filter.muscle, filter.exerciseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [shown, setShown] = useState(PAGE);
+  useEffect(() => setShown(PAGE), [filter.programId, filter.muscle, filter.exerciseId]);
   if (!data) return null;
   const usedEx = new Set(data.items.flatMap((i) => i.exerciseIds));
   const byDate = new Map<string, HistoryItem[]>();
@@ -119,7 +122,11 @@ export function HistoryPage() {
           </Card>
         )}
 
-        {(view === 'list' ? items : day ? byDate.get(day) ?? [] : []).map((i) => <SessionRow key={i.session.id} item={i} onClick={() => nav(`/history/${i.session.id}`)} />)}
+        {(view === 'list' ? items.slice(0, shown) : day ? byDate.get(day) ?? [] : []).map((i) => <SessionRow key={i.session.id} item={i} onClick={() => nav(`/history/${i.session.id}`)} />)}
+        {/* E-06: years of history render in pages, not all at once */}
+        {view === 'list' && items.length > shown && (
+          <Button variant="light" onClick={() => setShown((n) => n + PAGE)} data-testid="history-more">{t('hist.showMore', { n: Math.min(PAGE, items.length - shown), left: items.length - shown })}</Button>
+        )}
         {view === 'calendar' && day && !(byDate.get(day)?.length) && <Text c="dimmed" fz="sm" ta="center">{t('hist.noneThatDay', { date: formatDate(day) })}</Text>}
         {view === 'calendar' && !day && <Text c="dimmed" fz="sm" ta="center">{t('hist.tapDay')}</Text>}
         {view === 'list' && items.length === 0 && (data.items.length === 0
