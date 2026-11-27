@@ -247,10 +247,10 @@ export function WorkoutPage() {
               const state = r.se.status === 'skipped' ? 'skipped' : isDone(r) ? 'done' : r === current ? 'current' : 'todo';
               return (
                 <button key={r.se.id} type="button" className="w-nav-chip" data-state={state} aria-current={r === current ? 'step' : undefined} onClick={() => goTo(r.se.id)}
-                  aria-label={t('wo.navItem', { name: r.ex?.name ?? r.se.exerciseId, done, total })} data-testid="wo-nav-item" data-se={undefined} data-target={r.se.id}>
-                  {state === 'done' ? <IconCircleCheckFilled size={16} color="var(--mantine-color-mint-5)" aria-hidden /> : <Text span fz="xs" fw={700} aria-hidden>{i + 1}</Text>}
-                  <span className="w-nav-name" aria-hidden>{r.ex?.name ?? r.se.exerciseId}</span>
-                  <Text span fz="xs" c="dimmed" aria-hidden>{done}/{total}</Text>
+                  data-testid="wo-nav-item" data-target={r.se.id}>
+                  {state === 'done' ? <IconCircleCheckFilled size={16} color="var(--mantine-color-mint-5)" aria-hidden /> : <Text span fz="xs" fw={700}>{i + 1}</Text>}
+                  <span className="w-nav-name">{r.ex?.name ?? r.se.exerciseId}</span>
+                  <Text span fz="xs" c="dimmed">{done}/{total}<span className="w-sr"> {t('wo.setsDoneSr')}</span></Text>
                 </button>
               );
             })}

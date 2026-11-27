@@ -256,7 +256,7 @@ export function TodayPage() {
 
 function UpcomingRow({ date, plan, name, done, onOpen }: { date: string; plan: DayPlan; name?: string; done: boolean; onOpen: () => void }) {
   return (
-    <UnstyledButton onClick={onOpen} w="100%" mih={44} py={8} px={6} data-testid="upcoming-row" aria-label={`${formatDate(date)} ${name ?? ''}`}>
+    <UnstyledButton onClick={onOpen} w="100%" mih={44} py={8} px={6} data-testid="upcoming-row">
       <Group justify="space-between" wrap="nowrap">
         <Text fz="sm" w={110}>{formatDate(date)}</Text>
         <Group gap={6} wrap="nowrap" style={{ flex: 1 }} justify="flex-end">

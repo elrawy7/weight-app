@@ -48,7 +48,7 @@ export function PlanPage() {
       <PageHeader title={t('plan.title')} back subtitle={d.program.name} />
       <Card withBorder padding="sm" radius="md">
         <Text fw={600} data-testid="plan-progress">{t('plan.progress', { done: d.done, total: d.total })}</Text>
-        <Progress mt={6} value={d.total ? (100 * d.done) / d.total : 0} size="lg" radius="xl" />
+        <Progress mt={6} value={d.total ? (100 * d.done) / d.total : 0} size="lg" radius="xl" aria-label={t('plan.progress', { done: d.done, total: d.total })} />
       </Card>
       {d.undo && (
         <Card withBorder padding="sm" radius="md" mt="sm" data-testid="plan-undo-card">
@@ -64,7 +64,6 @@ export function PlanPage() {
             <Stack gap={0}>
               {w.days.map((x) => (
                 <UnstyledButton key={x.date} onClick={() => nav(x.date === realToday ? '/' : `/?date=${x.date}`)} mih={48} px={8} py={6} data-testid="plan-day"
-                  aria-label={`${formatDate(x.date)} ${x.name ?? t(`plan.status.${x.status}` as MsgKey)}`}
                   style={x.date === realToday ? { background: 'var(--mantine-color-blue-light)', borderRadius: 8 } : undefined}>
                   <Group justify="space-between" wrap="nowrap">
                     <Text fz="sm" w={104} fw={x.date === realToday ? 700 : 400}>{formatDate(x.date)}</Text>

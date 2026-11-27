@@ -37,7 +37,7 @@ body.w-flash #root { animation: w-flash 1.2s ease-out 1; }
 .w-wbar { position: sticky; top: 0; z-index: 160; margin: calc(-1 * (var(--w-safe-top) + 12px)) -16px 8px; padding: calc(var(--w-safe-top) + 6px) 16px 6px; background: var(--mantine-color-body); border-bottom: 1px solid var(--mantine-color-default-border); }
 .w-nav-strip { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-top: 6px; -webkit-overflow-scrolling: touch; }
 .w-nav-strip::-webkit-scrollbar { display: none; }
-.w-nav-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; max-width: 180px; padding: 0 12px; border-radius: 22px; border: 1px solid var(--mantine-color-default-border); background: transparent; color: var(--mantine-color-text); font: inherit; font-size: 13px; cursor: pointer; }
+.w-nav-chip { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; max-width: 180px; padding: 0 12px; border-radius: 22px; border: 1px solid var(--mantine-color-default-border); background: transparent; color: var(--mantine-color-text); font: inherit; font-size: 13px; cursor: pointer; }
 .w-nav-chip[aria-current=step] { border-color: var(--mantine-primary-color-filled); background: var(--mantine-primary-color-light); font-weight: 700; }
 .w-nav-chip[data-state=done] { color: var(--mantine-color-dimmed); }
 .w-nav-chip > .w-nav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -48,3 +48,18 @@ body.w-flash #root { animation: w-flash 1.2s ease-out 1; }
 @media (min-width: 1024px) { .w-dock { left: 96px; bottom: 12px; } }
 /* D-05: toasts never cover the sticky workout bar (its height is published as --w-toast-offset) */
 .mantine-Notifications-root[data-position=top-center] { top: calc(var(--w-safe-top) + var(--w-toast-offset, 0px) + 8px) !important; }
+/* E-07: secondary text meets 4.5:1 in the light theme too (Mantine's default light "dimmed" is ~3.3:1 on white) */
+/* (Mantine sets these on :root[data-mantine-color-scheme]; same selector, later in the cascade) */
+:root[data-mantine-color-scheme='light'] {
+  --mantine-color-dimmed: #545C69 !important; --w-on-filled: #ffffff;
+  /* light-variant text and coloured text (warnings) dark enough on white and on their tinted backgrounds */
+  --mantine-color-mint-light-color: #0f6b45 !important; --mantine-color-mint-text: #0f6b45 !important;
+  --mantine-color-orange-light-color: #a34006 !important; --mantine-color-orange-text: #a34006 !important;
+  --mantine-color-amber-light-color: #805207 !important; --mantine-color-amber-text: #805207 !important;
+}
+:root[data-mantine-color-scheme='dark'] { --mantine-color-dimmed: #A3ACB8 !important; --w-on-filled: #0E1116; }
+/* checked filter chips use the same readable text colour as filled buttons */
+.mantine-Chip-root[data-variant='filled'], .mantine-Chip-root:not([data-variant]) { --chip-color: var(--w-on-filled) !important; }
+/* E-07: the prefilled ("ghost") values in set rows are what ✓ saves – readable (≥ 4.5:1), still lighter than typed values */
+:root[data-mantine-color-scheme='light'] [data-testid=set-row] input::placeholder { color: #687180; opacity: 1; }
+:root[data-mantine-color-scheme='dark'] [data-testid=set-row] input::placeholder { color: #8B95A1; opacity: 1; }

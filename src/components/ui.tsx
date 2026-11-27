@@ -61,7 +61,7 @@ export function SetRow({ index, weight, reps, increment, unit, done, previous, o
 export function ExerciseCard({ title, meta, badges, onClick, right, children, testId }: { title: string; meta?: ReactNode; badges?: ReactNode; onClick?: () => void; right?: ReactNode; children?: ReactNode; testId?: string }) {
   return (
     <Card withBorder padding="sm" radius="md" onClick={onClick} style={onClick ? { cursor: 'pointer' } : undefined} data-testid={testId}
-      role={onClick ? 'button' : undefined} aria-label={onClick ? title : undefined} tabIndex={onClick ? 0 : undefined}
+      role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined} mih={56}>
       <Group justify="space-between" wrap="nowrap" align="flex-start">
         <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>

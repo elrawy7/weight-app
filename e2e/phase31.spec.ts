@@ -154,7 +154,7 @@ test.describe('Phase 3.1 – D: workout & Today UX', () => {
     await page.getByTestId('wo-density').click();
     await expect(page.getByTestId('wo-density')).toHaveAttribute('data-density', 'compact');
     await expect(bench(page).getByTestId('wo-video')).toHaveAttribute('aria-label', 'Watch form video for Flat Barbell Bench Press (opens YouTube)');
-    await expect(unresolved.getByTestId('wo-video')).toHaveAttribute('aria-label', /^Search YouTube for .* form videos$/);
+    await expect(unresolved.getByTestId('wo-video')).toHaveAttribute('aria-label', /^Find form video for .* \(YouTube search\)$/);
 
     // D-02 navigator: one chip per exercise; the current one is marked; a tap jumps to the card below the bar
     const chips = page.getByTestId('wo-nav-item');
